@@ -16,8 +16,11 @@ app.use(
     origin: process.env.BETTER_AUTH_URL!,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     credentials: true,
+    allowedHeaders: "*",
   })
 );
+
+app.options("*", cors());
 
 app.all("/api/auth/*", toNodeHandler(auth));
 
