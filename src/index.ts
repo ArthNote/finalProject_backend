@@ -16,11 +16,22 @@ app.use(
     origin: process.env.BETTER_AUTH_URL!,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     credentials: true,
-    allowedHeaders: "*",
+    allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
 
 app.options("*", cors());
+
+app.options("*", (req, res) => {
+  res.header("Access-Control-Allow-Origin", process.env.BETTER_AUTH_URL!);
+  res.header(
+    "Access-Control-Allow-Methods",
+    "GET, POST, PUT, DELETE, OPTIONS, PATCH"
+  );
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.header("Access-Control-Allow-Credentials", "true");
+  res.sendStatus(204);
+});
 
 app.all("/api/auth/*", toNodeHandler(auth));
 
