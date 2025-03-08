@@ -11,17 +11,11 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-const allowedOrigins = [
-  process.env.BETTER_AUTH_URL!,
-  "https://taskflow-six-kohl.vercel.app",
-  "http://localhost:3000", // For local development
-];
-
 app.options("*", cors());
 
 app.use(
   cors({
-    origin: "https://taskflow-six-kohl.vercel.app",
+    origin: "https://taskflow-six-kohl.vercel.app/",
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     credentials: true,
     allowedHeaders: [

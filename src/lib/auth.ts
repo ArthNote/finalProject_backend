@@ -24,6 +24,7 @@ export const auth = betterAuth({
     "https://taskflow-six-kohl.vercel.app",
     "http://localhost:3000",
   ],
+
   emailAndPassword: {
     enabled: true,
     autoSignIn: true,
