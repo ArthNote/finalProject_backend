@@ -17,12 +17,7 @@ const allowedOrigins = [
   "http://localhost:3000", // For local development
 ];
 
-app.use((req, res, next) => {
-  console.log(`Request from: ${req.headers.origin}`);
-  console.log(`Method: ${req.method}`);
-  console.log(`Headers:`, req.headers);
-  next();
-});
+app.options("*", cors());
 
 app.use(
   cors({
@@ -42,27 +37,6 @@ app.use(
     allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
   })
 );
-
-app.options("*", (req, res) => {
-  const origin = req.headers.origin;
-
-  if (origin && allowedOrigins.includes(origin)) {
-    res.header("Access-Control-Allow-Origin", origin);
-  } else {
-    res.header("Access-Control-Allow-Origin", process.env.BETTER_AUTH_URL!);
-  }
-
-  res.header(
-    "Access-Control-Allow-Methods",
-    "GET, POST, PUT, DELETE, OPTIONS, PATCH"
-  );
-  res.header(
-    "Access-Control-Allow-Headers",
-    "Content-Type, Authorization, X-Requested-With"
-  );
-  res.header("Access-Control-Allow-Credentials", "true");
-  res.status(200).end();
-});
 
 app.all("/api/auth/*", toNodeHandler(auth));
 
