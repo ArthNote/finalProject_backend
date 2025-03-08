@@ -15,7 +15,7 @@ app.options("*", cors());
 
 app.use(
   cors({
-    origin: "https://taskflow-six-kohl.vercel.app/",
+    origin: "https://taskflow-six-kohl.vercel.app",
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     credentials: true,
     allowedHeaders: [
