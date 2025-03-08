@@ -16,6 +16,7 @@ app.use(
     origin: ["https://taskflow-six-kohl.vercel.app", "http://localhost:3000"],
     methods: ["GET", "POST", "PUT", "DELETE"],
     credentials: true,
+    allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
 
