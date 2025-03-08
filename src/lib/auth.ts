@@ -5,14 +5,15 @@ import { admin, twoFactor, username } from "better-auth/plugins";
 import { sendEmail } from "./resend";
 import cookie from "cookie";
 
-const getUrl = (token: string, locale: string) => {
-  return `http://localhost:8080/api/auth/verify-email?token=${token}&callbackURL=http://localhost:3000/${locale}/dashboard`;
-};
-
 import { stripe, Subscription } from "@better-auth/stripe";
 import Stripe from "stripe";
 
 const stripeClient = new Stripe(process.env.STRIPE_SECRET_KEY!);
+const frontEndUrl = process.env.BETTER_AUTH_URL!;
+
+const getUrl = (token: string, locale: string) => {
+  return `${process.env.BACKEND_URL}/api/auth/verify-email?token=${token}&callbackURL=${frontEndUrl}/${locale}/dashboard`;
+};
 
 export const auth = betterAuth({
   database: prismaAdapter(db, {
@@ -20,7 +21,7 @@ export const auth = betterAuth({
   }),
 
   appName: "taskflow.",
-  trustedOrigins: ["http://localhost:3000"],
+  trustedOrigins: [frontEndUrl],
   emailAndPassword: {
     enabled: true,
     autoSignIn: true,
@@ -91,14 +92,14 @@ export const auth = betterAuth({
     microsoft: {
       clientId: process.env.MICROSOFT_CLIENT_ID as string,
       clientSecret: process.env.MICROSOFT_CLIENT_SECRET as string,
-      redirectURI: "http://localhost:3000/en/dashboard",
+      redirectURI: `${frontEndUrl}/en/dashboard`,
       enabled: false,
     },
     twitter: {
       clientId: process.env.TWITTER_CLIENT_ID as string,
       clientSecret: process.env.TWITTER_CLIENT_SECRET as string,
       enabled: false,
-      redirectURI: "http://localhost:3000/en/dashboard",
+      redirectURI: `${frontEndUrl}/en/dashboard`,
     },
     discord: {
       clientId: process.env.DISCORD_CLIENT_ID as string,
@@ -107,7 +108,7 @@ export const auth = betterAuth({
     linkedin: {
       clientId: process.env.LINKEDIN_CLIENT_ID as string,
       clientSecret: process.env.LINKEDIN_CLIENT_SECRET as string,
-      redirectURI: "http://localhost:3000/en/dashboard",
+      redirectURI: `${frontEndUrl}/en/dashboard`,
       enabled: false,
     },
   },
