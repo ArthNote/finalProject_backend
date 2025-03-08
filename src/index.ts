@@ -9,12 +9,11 @@ import dotenv from "dotenv";
 dotenv.config();
 
 const app = express();
-const PORT = 8080;
+const PORT = process.env.PORT || 8080;
 
-// Apply middleware before defining routes
 app.use(
   cors({
-    origin: "http://localhost:3000",
+    origin: process.env.BETTER_AUTH_URL,
     methods: ["GET", "POST", "PUT", "DELETE"],
     credentials: true,
   })
