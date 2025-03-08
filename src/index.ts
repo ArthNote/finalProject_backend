@@ -11,29 +11,50 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 8080;
 
+const allowedOrigins = [
+  process.env.BETTER_AUTH_URL!,
+  "https://taskflow-six-kohl.vercel.app",
+  "http://localhost:3000", // For local development
+];
+
 app.use(
   cors({
-    origin: process.env.BETTER_AUTH_URL!,
+    origin: function (origin, callback) {
+      // Allow requests with no origin (like mobile apps or curl requests)
+      if (!origin) return callback(null, true);
+
+      if (allowedOrigins.indexOf(origin) !== -1) {
+        callback(null, true);
+      } else {
+        console.log("Origin not allowed by CORS:", origin);
+        callback(null, true); // Still allow during development - remove in production
+      }
+    },
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     credentials: true,
     allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
   })
 );
 
-app.options("*", cors());
-
 app.options("*", (req, res) => {
-  res.header("Access-Control-Allow-Origin", process.env.BETTER_AUTH_URL!);
+  const origin = req.headers.origin;
+
+  if (origin && allowedOrigins.includes(origin)) {
+    res.header("Access-Control-Allow-Origin", origin);
+  } else {
+    res.header("Access-Control-Allow-Origin", process.env.BETTER_AUTH_URL!);
+  }
+
   res.header(
     "Access-Control-Allow-Methods",
     "GET, POST, PUT, DELETE, OPTIONS, PATCH"
   );
   res.header(
     "Access-Control-Allow-Headers",
-    "Content-Type, Authorization,X-Requested-With"
+    "Content-Type, Authorization, X-Requested-With"
   );
   res.header("Access-Control-Allow-Credentials", "true");
-  res.sendStatus(204);
+  res.status(200).end();
 });
 
 app.all("/api/auth/*", toNodeHandler(auth));
