@@ -17,6 +17,13 @@ const allowedOrigins = [
   "http://localhost:3000", // For local development
 ];
 
+app.use((req, res, next) => {
+  console.log(`Request from: ${req.headers.origin}`);
+  console.log(`Method: ${req.method}`);
+  console.log(`Headers:`, req.headers);
+  next();
+});
+
 app.use(
   cors({
     origin: function (origin, callback) {
