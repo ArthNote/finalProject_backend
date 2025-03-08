@@ -19,9 +19,11 @@ export const auth = betterAuth({
   database: prismaAdapter(db, {
     provider: "postgresql",
   }),
-
   appName: "taskflow.",
-  trustedOrigins: [frontEndUrl],
+  trustedOrigins: [
+    "https://taskflow-six-kohl.vercel.app",
+    "http://localhost:3000",
+  ],
   emailAndPassword: {
     enabled: true,
     autoSignIn: true,
