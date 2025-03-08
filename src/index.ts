@@ -13,8 +13,8 @@ const PORT = process.env.PORT || 8080;
 
 app.use(
   cors({
-    origin: "https://taskflow-six-kohl.vercel.app",
-    methods: ["GET", "POST", "PUT", "DELETE"],
+    origin: process.env.BETTER_AUTH_URL!,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     credentials: true,
     allowedHeaders: ["Content-Type", "Authorization"],
   })
