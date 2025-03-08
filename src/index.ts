@@ -33,6 +33,10 @@ app.use(
   })
 );
 
+app.options("*", (req, res) => {
+  res.status(200).end();
+});
+
 app.all("/api/auth/*", toNodeHandler(auth));
 
 // Add body parsing middleware
