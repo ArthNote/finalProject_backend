@@ -16,7 +16,7 @@ app.use(
     origin: process.env.BETTER_AUTH_URL!,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     credentials: true,
-    allowedHeaders: ["Content-Type", "Authorization"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
   })
 );
 
@@ -28,7 +28,10 @@ app.options("*", (req, res) => {
     "Access-Control-Allow-Methods",
     "GET, POST, PUT, DELETE, OPTIONS, PATCH"
   );
-  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.header(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization,X-Requested-With"
+  );
   res.header("Access-Control-Allow-Credentials", "true");
   res.sendStatus(204);
 });
