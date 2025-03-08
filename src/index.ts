@@ -21,20 +21,21 @@ app.options("*", cors());
 
 app.use(
   cors({
-    origin: function (origin, callback) {
-      // Allow requests with no origin (like mobile apps or curl requests)
-      if (!origin) return callback(null, true);
-
-      if (allowedOrigins.indexOf(origin) !== -1) {
-        callback(null, true);
-      } else {
-        console.log("Origin not allowed by CORS:", origin);
-        callback(null, true); // Still allow during development - remove in production
-      }
-    },
+    origin: process.env.BETTER_AUTH_URL!,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     credentials: true,
-    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "X-Requested-With",
+      "X-CSRF-Token",
+      "Accept",
+      "Accept-Version",
+      "Content-Length",
+      "Content-MD5",
+      "Date",
+      "X-Api-Version",
+    ],
   })
 );
 
