@@ -107,6 +107,7 @@ model Subscription {
   trialEnd             DateTime?
   billing              String?
   price                Float?
+  autoRenew            Boolean? @default(true)
 
   @@map("subscription")
 }

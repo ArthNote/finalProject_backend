@@ -3,6 +3,7 @@ import { toNodeHandler } from "better-auth/node";
 import { auth } from "./lib/auth";
 import cors from "cors";
 import usersRouter from "./routes/users";
+import subscriptionsRouter from "./routes/subscriptions";
 
 import dotenv from "dotenv";
 
@@ -10,8 +11,6 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 8080;
-
-app.options("*", cors());
 
 app.use(
   cors({
@@ -32,7 +31,7 @@ app.use(
     ],
   })
 );
-
+app.options("*", cors());
 app.all("/api/auth/*", toNodeHandler(auth));
 
 app.options("*", (req, res) => {
@@ -43,6 +42,7 @@ app.options("*", (req, res) => {
 app.use(express.json());
 
 app.use("/api/users", usersRouter);
+app.use("/api/subscriptions", subscriptionsRouter);
 
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);

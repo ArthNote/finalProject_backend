@@ -7,10 +7,6 @@ import {
 
 const router = Router();
 
-router.get("/");
-
-router.get("/:id");
-
 router.delete("/account/:id", async (req: Request, res: Response) => {
   await deleteAccount(req, res);
 });
@@ -22,5 +18,6 @@ router.post("/account", async (req: Request, res: Response) => {
 router.put("/language", async (req: Request, res: Response) => {
   await updateLanguage(req, res);
 });
+
 
 export default router;
