@@ -182,6 +182,19 @@ export const auth = betterAuth({
           const price = stripeSubscription.items.data[0].plan.amount! / 100;
           const billing = stripeSubscription.items.data[0].plan.interval;
 
+          const paymentMethods = await stripeClient.paymentMethods.list({
+            customer: subscription.stripeCustomerId!,
+            type: "card",
+          });
+
+          const paymentMethodId = paymentMethods.data[0].id;
+
+          await stripeClient.customers.update(subscription.stripeCustomerId!, {
+            invoice_settings: {
+              default_payment_method: paymentMethodId,
+            },
+          });
+
           const data = await db.subscription.update({
             where: {
               id: subscription.id,

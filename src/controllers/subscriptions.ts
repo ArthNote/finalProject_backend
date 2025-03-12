@@ -5,6 +5,7 @@ import { db } from "../lib/prisma";
 import { decryptData } from "../lib/crypto";
 import { sendEmail } from "../lib/resend";
 import Stripe from "stripe";
+import exp from "constants";
 
 export async function getSubscription(req: Request, res: Response) {
   const headers = fromNodeHeaders(req.headers);
@@ -237,6 +238,191 @@ export async function cancelSubscription(req: Request, res: Response) {
   } catch (error) {
     return res.status(400).json({
       message: "Error generating link " + error,
+      success: false,
+    });
+  }
+}
+
+export async function getInvoices(req: Request, res: Response) {
+  const headers = fromNodeHeaders(req.headers);
+  const session = await auth.api.getSession({
+    headers: headers,
+  });
+  if (!session) {
+    return res.status(401).send({
+      message: "Unauthorized",
+      success: false,
+    });
+  }
+
+  try {
+    const subscription = await db.subscription.findFirst({
+      where: {
+        stripeCustomerId: session.user.stripeCustomerId,
+      },
+    });
+
+    if (!subscription) {
+      return res.status(200).json({
+        message: "No subscription found",
+        success: true,
+      });
+    }
+
+    const invoices = await stripeClient.invoices.list({
+      customer: session.user.stripeCustomerId!,
+      subscription: subscription?.stripeSubscriptionId!,
+      limit: 4,
+    });
+
+    if (!invoices.data.length) {
+      return res.status(200).json({
+        message: "No invoices found",
+        success: true,
+      });
+    }
+
+    const formattedInvoices = invoices.data.map((invoice) => {
+      return {
+        id: invoice.id,
+        amount: invoice.amount_due,
+        paid: invoice.paid,
+        invoicePdf: invoice.invoice_pdf,
+        invoiceUrl: invoice.hosted_invoice_url,
+        created: new Date(invoice.created * 1000),
+      };
+    });
+
+    return res.status(200).json({
+      data: formattedInvoices,
+      success: true,
+      message: "Invoices retrieved",
+    });
+  } catch (error) {
+    return res.status(400).json({
+      message: "Error retrieving subscription " + error,
+      success: false,
+    });
+  }
+}
+
+export async function finalizeInvoice(req: Request, res: Response) {
+  const headers = fromNodeHeaders(req.headers);
+  const session = await auth.api.getSession({
+    headers: headers,
+  });
+  if (!session) {
+    return res.status(401).send({
+      message: "Unauthorized",
+      success: false,
+    });
+  }
+
+  try {
+    const id = req.params.id;
+
+    if (!id) {
+      return res.status(400).json({
+        message: "Invoice ID is required",
+        success: false,
+      });
+    }
+
+    const invoice = await stripeClient.invoices.retrieve(id);
+
+    if (!invoice) {
+      return res.status(200).json({
+        message: "No invoice found",
+        success: true,
+      });
+    }
+
+    const finalizedInvoice = await stripeClient.invoices.finalizeInvoice(id);
+
+    return res.status(200).json({
+      message: "Invoice finalized",
+      success: true,
+      data: finalizedInvoice.hosted_invoice_url,
+    });
+  } catch (error) {
+    return res.status(400).json({
+      message: "Error finalizing invoice " + error,
+      success: false,
+    });
+  }
+}
+
+export async function getPaymentMethods(req: Request, res: Response) {
+  const headers = fromNodeHeaders(req.headers);
+  const session = await auth.api.getSession({
+    headers: headers,
+  });
+  if (!session) {
+    return res.status(401).send({
+      message: "Unauthorized",
+      success: false,
+    });
+  }
+
+  try {
+    const customer = (await stripeClient.customers.retrieve(
+      session.user.stripeCustomerId!
+    )) as Stripe.Customer;
+
+    const paymentMethod = await stripeClient.customers.retrievePaymentMethod(
+      session.user.stripeCustomerId!,
+      customer.invoice_settings.default_payment_method as string
+    );
+
+    const formatedCard = {
+      id: paymentMethod.id,
+      month: paymentMethod.card?.exp_month,
+      year: paymentMethod.card?.exp_year,
+      last4: paymentMethod.card?.last4,
+      brand: paymentMethod.card?.brand,
+    };
+
+    return res.status(200).json({
+      message: "Payment method retrieved",
+      success: true,
+      data: formatedCard,
+    });
+  } catch (error) {
+    return res.status(400).json({
+      message: "Error retrieving payment method " + error,
+      success: false,
+    });
+  }
+}
+
+export async function changePaymentMethod(req: Request, res: Response) {
+  const headers = fromNodeHeaders(req.headers);
+  const session = await auth.api.getSession({
+    headers: headers,
+  });
+  if (!session) {
+    return res.status(401).send({
+      message: "Unauthorized",
+      success: false,
+    });
+  }
+
+  try {
+    const checkoutSession = await stripeClient.billingPortal.sessions.create({
+      customer: session.user.stripeCustomerId!,
+      locale: session.user.lang as "en" | "fr",
+
+      return_url: "http://localhost:3000/en/dashboard",
+    });
+
+    return res.status(200).json({
+      message: "Payment method updated",
+      success: true,
+      link: checkoutSession.url,
+    });
+  } catch (error) {
+    return res.status(400).json({
+      message: "Error updating payment method " + error,
       success: false,
     });
   }

@@ -3,7 +3,11 @@ import {
   changeBillingMode,
   changePlan,
   getSubscription,
-  cancelSubscription
+  cancelSubscription,
+  getInvoices,
+  finalizeInvoice,
+  getPaymentMethods,
+  changePaymentMethod,
 } from "../controllers/subscriptions";
 
 const router = Router();
@@ -22,6 +26,22 @@ router.put("/billingMode", async (req: Request, res: Response) => {
 
 router.get("/cancel", async (req: Request, res: Response) => {
   await cancelSubscription(req, res);
+});
+
+router.get("/invoices", async (req: Request, res: Response) => {
+  await getInvoices(req, res);
+});
+
+router.post("/invoices/finalize/:id", async (req: Request, res: Response) => {
+  await finalizeInvoice(req, res);
+});
+
+router.get("/method", async (req: Request, res: Response) => {
+  await getPaymentMethods(req, res);
+});
+
+router.get("/changeMethod", async (req: Request, res: Response) => {
+  await changePaymentMethod(req, res);
 });
 
 export default router;
