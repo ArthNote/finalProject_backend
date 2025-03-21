@@ -4,6 +4,7 @@ import { auth } from "./lib/auth";
 import cors from "cors";
 import usersRouter from "./routes/users";
 import subscriptionsRouter from "./routes/subscriptions";
+import tasksRouter from "./routes/tasks";
 
 import dotenv from "dotenv";
 
@@ -43,6 +44,7 @@ app.use(express.json());
 
 app.use("/api/users", usersRouter);
 app.use("/api/subscriptions", subscriptionsRouter);
+app.use("/api/tasks", tasksRouter);
 
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);

@@ -14,9 +14,9 @@ datasource db {
 }
 
 model User {
-  id              String    @id @default(cuid())
+  id              String    @id @unique @default(cuid())
   name            String
-  email           String?
+  email           String? 
   emailVerified   Boolean?
   image           String?
   createdAt       DateTime
@@ -32,13 +32,16 @@ model User {
 
   stripeCustomerId String?
 
+  // New relation for task assignments
+  assignedTasks TaskAssignment[]
+
   @@unique([email])
   @@unique([username])
   @@map("user")
 }
 
 model Session {
-  id        String   @id @default(cuid())
+  id        String   @id @unique @default(cuid())
   expiresAt DateTime
   token     String
   createdAt DateTime
@@ -53,7 +56,7 @@ model Session {
 }
 
 model Account {
-  id                    String    @id @default(cuid())
+  id                    String    @id @unique @default(cuid())
   accountId             String
   providerId            String
   userId                String
@@ -72,7 +75,7 @@ model Account {
 }
 
 model Verification {
-  id         String    @id @default(cuid())
+  id         String    @id @unique @default(cuid())
   identifier String
   value      String
   expiresAt  DateTime
@@ -83,7 +86,7 @@ model Verification {
 }
 
 model TwoFactor {
-  id          String @id @default(cuid())
+  id          String @id @unique @default(cuid())
   secret      String
   backupCodes String
   userId      String
@@ -93,7 +96,7 @@ model TwoFactor {
 }
 
 model Subscription {
-  id                   String    @id @default(cuid())
+  id                   String    @id @unique @default(cuid())
   plan                 String
   referenceId          String
   stripeCustomerId     String?
@@ -107,7 +110,68 @@ model Subscription {
   trialEnd             DateTime?
   billing              String?
   price                Float?
-  autoRenew            Boolean? @default(true)
+  autoRenew            Boolean?  @default(true)
 
   @@map("subscription")
+}
+
+model Task {
+  id String @id @unique @default(cuid())
+
+  title       String
+  description String
+  priority    String // "high", "medium", "low"
+  category    String
+  completed   Boolean   @default(false)
+  scheduled   Boolean   @default(false)
+  date        DateTime?
+  startTime   DateTime?
+  endTime     DateTime?
+  duration    Int? // Duration in minutes
+  tags        String[]
+  status      String? // For kanban view
+  order       Int? // For kanban sorting
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Relations
+  parentId String? // For sub-tasks
+  parent   Task?   @relation("SubTasks", fields: [parentId], references: [id], onDelete: SetNull)
+  subTasks Task[]  @relation("SubTasks")
+
+  resources TaskResource[]
+
+  // Task assignments
+  assignedTo TaskAssignment[]
+
+  @@map("task")
+}
+
+model TaskResource {
+  id       String  @id @unique @default(cuid())
+  name     String
+  type     String
+  category String // "file", "link", "note"
+  url      String?
+
+  // Relation to Task
+  taskId String
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("task_resource")
+}
+
+model TaskAssignment {
+  id        String   @id @unique @default(cuid())
+  taskId    String
+  userId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([taskId, userId])
+  @@map("task_assignment")
 }
