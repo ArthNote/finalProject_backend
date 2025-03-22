@@ -16,7 +16,7 @@ datasource db {
 model User {
   id              String    @id @unique @default(cuid())
   name            String
-  email           String? 
+  email           String?
   emailVerified   Boolean?
   image           String?
   createdAt       DateTime
@@ -34,6 +34,7 @@ model User {
 
   // New relation for task assignments
   assignedTasks TaskAssignment[]
+  Task          Task[]
 
   @@unique([email])
   @@unique([username])
@@ -135,6 +136,8 @@ model Task {
   updatedAt   DateTime  @updatedAt
 
   // Relations
+  userId   String?
+  user     User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
   parentId String? // For sub-tasks
   parent   Task?   @relation("SubTasks", fields: [parentId], references: [id], onDelete: SetNull)
   subTasks Task[]  @relation("SubTasks")
