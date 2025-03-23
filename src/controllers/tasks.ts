@@ -115,35 +115,53 @@ export async function getTasks(req: Request, res: Response) {
       ],
     };
 
-    // Apply search filter if provided
+    // Apply search filter if provided - we'll handle this separately for each section
+    let searchCondition = null;
     if (search) {
-      baseWhere.AND = baseWhere.AND || [];
-      baseWhere.AND.push({
+      searchCondition = {
         OR: [
           { title: { contains: search as string, mode: "insensitive" } },
           { description: { contains: search as string, mode: "insensitive" } },
         ],
-      });
+      };
     }
 
-    // Apply category filter if provided
+    // Apply category filter if provided - we'll handle this separately for each section
+    let categoryCondition = null;
     if (category && category !== "all") {
-      baseWhere.AND = baseWhere.AND || [];
-      baseWhere.AND.push({ category: category });
+      categoryCondition = { category: category };
     }
 
-    // Apply priority filter if provided
+    // Apply priority filter if provided - we'll handle this separately for each section
+    let priorityCondition = null;
     if (priority && priority !== "all") {
-      baseWhere.AND = baseWhere.AND || [];
-      baseWhere.AND.push({ priority: priority });
+      priorityCondition = { priority: priority };
     }
 
-    // Get todo tasks - only scheduled tasks when filter is "scheduled" or "all"
-    const todoWhere = {
+    // Combine all filters for each section separately
+
+    // 1. TODO TASKS - scheduled and not completed
+    const todoWhere: any = {
       ...baseWhere,
       completed: false,
-      scheduled: true, // Always get scheduled tasks for todo section
+      scheduled: true,
     };
+
+    // Add search, category and priority filters to todo tasks
+    if (searchCondition) {
+      todoWhere.AND = todoWhere.AND || [];
+      todoWhere.AND.push(searchCondition);
+    }
+
+    if (categoryCondition) {
+      todoWhere.AND = todoWhere.AND || [];
+      todoWhere.AND.push(categoryCondition);
+    }
+
+    if (priorityCondition) {
+      todoWhere.AND = todoWhere.AND || [];
+      todoWhere.AND.push(priorityCondition);
+    }
 
     // Add date filter for scheduled tasks
     if (dateFrom || dateTo) {
@@ -160,13 +178,29 @@ export async function getTasks(req: Request, res: Response) {
       }
     }
 
-    // Get completed tasks
-    const completedWhere = {
+    // 2. COMPLETED TASKS
+    const completedWhere: any = {
       ...baseWhere,
       completed: true,
     };
 
-    // Add date filter for completed tasks if needed
+    // Add search, category and priority filters to completed tasks
+    if (searchCondition) {
+      completedWhere.AND = completedWhere.AND || [];
+      completedWhere.AND.push(searchCondition);
+    }
+
+    if (categoryCondition) {
+      completedWhere.AND = completedWhere.AND || [];
+      completedWhere.AND.push(categoryCondition);
+    }
+
+    if (priorityCondition) {
+      completedWhere.AND = completedWhere.AND || [];
+      completedWhere.AND.push(priorityCondition);
+    }
+
+    // Add date filter for completed tasks
     if (dateFrom || dateTo) {
       completedWhere.AND = completedWhere.AND || [];
 
@@ -183,12 +217,67 @@ export async function getTasks(req: Request, res: Response) {
       }
     }
 
-    // Get unscheduled tasks - only return if filter is "unscheduled" or "all"
-    const unscheduledWhere = {
+    // 3. UNSCHEDULED TASKS
+    const unscheduledWhere: any = {
       ...baseWhere,
       completed: false,
       scheduled: false,
     };
+
+    // Add search, category and priority filters to unscheduled tasks
+    if (searchCondition) {
+      unscheduledWhere.AND = unscheduledWhere.AND || [];
+      unscheduledWhere.AND.push(searchCondition);
+    }
+
+    if (categoryCondition) {
+      unscheduledWhere.AND = unscheduledWhere.AND || [];
+      unscheduledWhere.AND.push(categoryCondition);
+    }
+
+    if (priorityCondition) {
+      unscheduledWhere.AND = unscheduledWhere.AND || [];
+      unscheduledWhere.AND.push(priorityCondition);
+    }
+
+    // For unscheduled tasks, allow null dates but also apply date filters to any that have dates
+    if (
+      (dateFrom || dateTo) &&
+      (scheduled === "all" || scheduled === "unscheduled")
+    ) {
+      unscheduledWhere.AND = unscheduledWhere.AND || [];
+
+      // For date filters on unscheduled tasks, we want to include tasks with null dates
+      // OR tasks with dates matching the filter
+      const dateCondition: any = {
+        OR: [
+          { date: null }, // Always include tasks with null dates for unscheduled section
+        ],
+      };
+
+      // Build the date range condition for non-null dates
+      let dateRangeCondition: any = {};
+
+      if (dateFrom && dateTo) {
+        const startDate = new Date(dateFrom as string);
+        const endDate = new Date(dateTo as string);
+        endDate.setHours(23, 59, 59, 999);
+
+        dateRangeCondition = {
+          AND: [{ date: { gte: startDate } }, { date: { lte: endDate } }],
+        };
+
+        dateCondition.OR.push(dateRangeCondition);
+      } else if (dateFrom) {
+        dateCondition.OR.push({ date: { gte: new Date(dateFrom as string) } });
+      } else if (dateTo) {
+        const endDate = new Date(dateTo as string);
+        endDate.setHours(23, 59, 59, 999);
+        dateCondition.OR.push({ date: { lte: endDate } });
+      }
+
+      unscheduledWhere.AND.push(dateCondition);
+    }
 
     // Calculate proper offsets for pagination
     const todoSkip = (Number(todoPage) - 1) * Number(todoLimit);
@@ -220,7 +309,7 @@ export async function getTasks(req: Request, res: Response) {
                     select: {
                       id: true,
                       name: true,
-                      image: true, // Include user image as profilePic
+                      image: true,
                     },
                   },
                 },
@@ -229,7 +318,7 @@ export async function getTasks(req: Request, res: Response) {
           })
         : Promise.resolve([]),
 
-      // Todo tasks count - only count if filter is "all" or "scheduled"
+      // Todo tasks count
       scheduled !== "unscheduled"
         ? db.task.count({ where: todoWhere })
         : Promise.resolve(0),
@@ -248,7 +337,7 @@ export async function getTasks(req: Request, res: Response) {
                 select: {
                   id: true,
                   name: true,
-                  image: true, // Include user image as profilePic
+                  image: true,
                 },
               },
             },
@@ -274,7 +363,7 @@ export async function getTasks(req: Request, res: Response) {
                     select: {
                       id: true,
                       name: true,
-                      image: true, // Include user image as profilePic
+                      image: true,
                     },
                   },
                 },
@@ -283,7 +372,7 @@ export async function getTasks(req: Request, res: Response) {
           })
         : Promise.resolve([]),
 
-      // Unscheduled tasks count - only count if filter is "all" or "unscheduled"
+      // Unscheduled tasks count
       scheduled !== "scheduled"
         ? db.task.count({ where: unscheduledWhere })
         : Promise.resolve(0),
