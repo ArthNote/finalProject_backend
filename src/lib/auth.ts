@@ -407,6 +407,14 @@ export const auth = betterAuth({
             },
           },
         ],
+        getCheckoutSessionParams: (data, request) => {
+          return {
+            params: {
+              locale: data.user.lang === "fr" ? "fr" : "en",
+              success_url: `${frontEndUrl}/${data.user.lang}/dashboard`,
+            },
+          };
+        },
       },
     }),
   ],

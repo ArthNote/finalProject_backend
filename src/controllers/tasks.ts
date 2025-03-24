@@ -34,6 +34,7 @@ export async function createManualTask(
     await db.task.create({
       data: {
         ...taskData,
+        user: { connect: { id: session.user.id } }, // Connect the current user to the task
         ...(parentId ? { parent: { connect: { id: parentId } } } : {}),
         ...(assignedTo && assignedTo.length > 0
           ? {
@@ -99,6 +100,8 @@ export async function getTasks(req: Request, res: Response) {
       completedLimit = 2,
       unscheduledPage = 1,
       unscheduledLimit = 2,
+      inprogressPage = 1,
+      inprogressLimit = 2,
     } = req.query;
 
     // Base query conditions - include tasks where user is either owner or assigned
@@ -279,11 +282,60 @@ export async function getTasks(req: Request, res: Response) {
       unscheduledWhere.AND.push(dateCondition);
     }
 
+    // Add a new section for IN PROGRESS TASKS
+    const inprogressWhere: any = {
+      ...baseWhere,
+      completed: false,
+      scheduled: true,
+      status: "inprogress",
+    };
+
+    // Add search, category and priority filters to in-progress tasks
+    if (searchCondition) {
+      inprogressWhere.AND = inprogressWhere.AND || [];
+      inprogressWhere.AND.push(searchCondition);
+    }
+
+    if (categoryCondition) {
+      inprogressWhere.AND = inprogressWhere.AND || [];
+      inprogressWhere.AND.push(categoryCondition);
+    }
+
+    if (priorityCondition) {
+      inprogressWhere.AND = inprogressWhere.AND || [];
+      inprogressWhere.AND.push(priorityCondition);
+    }
+
+    // Add date filter for in-progress tasks
+    if (dateFrom || dateTo) {
+      inprogressWhere.AND = inprogressWhere.AND || [];
+
+      if (dateFrom) {
+        inprogressWhere.AND.push({
+          date: { gte: new Date(dateFrom as string) },
+        });
+      }
+
+      if (dateTo) {
+        const endDate = new Date(dateTo as string);
+        endDate.setHours(23, 59, 59, 999);
+        inprogressWhere.AND.push({ date: { lte: endDate } });
+      }
+    }
+
+    // Modify todoWhere to exclude in-progress tasks
+    todoWhere.AND = todoWhere.AND || [];
+    todoWhere.AND.push({
+      OR: [{ status: null }, { status: { not: "inprogress" } }],
+    });
+
     // Calculate proper offsets for pagination
     const todoSkip = (Number(todoPage) - 1) * Number(todoLimit);
     const completedSkip = (Number(completedPage) - 1) * Number(completedLimit);
     const unscheduledSkip =
       (Number(unscheduledPage) - 1) * Number(unscheduledLimit);
+    const inprogressSkip =
+      (Number(inprogressPage) - 1) * Number(inprogressLimit);
 
     // Execute queries in parallel
     const [
@@ -293,6 +345,8 @@ export async function getTasks(req: Request, res: Response) {
       completedTotal,
       unscheduledTasks,
       unscheduledTotal,
+      inprogressTasks,
+      inprogressTotal,
     ] = await Promise.all([
       // Todo tasks - only get if filter is "all" or "scheduled"
       scheduled !== "unscheduled"
@@ -376,6 +430,35 @@ export async function getTasks(req: Request, res: Response) {
       scheduled !== "scheduled"
         ? db.task.count({ where: unscheduledWhere })
         : Promise.resolve(0),
+
+      // In-progress tasks
+      scheduled !== "unscheduled"
+        ? db.task.findMany({
+            where: inprogressWhere,
+            skip: inprogressSkip,
+            take: Number(inprogressLimit),
+            orderBy: { date: "asc" },
+            include: {
+              resources: true,
+              assignedTo: {
+                include: {
+                  user: {
+                    select: {
+                      id: true,
+                      name: true,
+                      image: true,
+                    },
+                  },
+                },
+              },
+            },
+          })
+        : Promise.resolve([]),
+
+      // In-progress tasks count
+      scheduled !== "unscheduled"
+        ? db.task.count({ where: inprogressWhere })
+        : Promise.resolve(0),
     ]);
 
     // Transform user data to match our AssignedUser interface
@@ -394,6 +477,7 @@ export async function getTasks(req: Request, res: Response) {
     const todo = transformTaskAssignees(todoTasks);
     const completed = transformTaskAssignees(completedTasks);
     const unscheduled = transformTaskAssignees(unscheduledTasks);
+    const inprogress = transformTaskAssignees(inprogressTasks);
 
     return res.status(200).json({
       todo,
@@ -402,11 +486,185 @@ export async function getTasks(req: Request, res: Response) {
       completedTotal,
       unscheduled,
       unscheduledTotal,
+      inprogress,
+      inprogressTotal,
     });
   } catch (error) {
     console.error("Error fetching tasks:", error);
     return res.status(500).json({
       message: "Error fetching tasks: " + error,
+      success: false,
+    });
+  }
+}
+
+export async function deleteTask(req: Request, res: Response) {
+  const session = await auth.api.getSession({
+    headers: fromNodeHeaders(req.headers),
+  });
+  if (!session) {
+    return res.status(401).send({
+      message: "Unauthorized",
+      success: false,
+    });
+  }
+
+  try {
+    const id = req.params.id;
+
+    const task = await db.task.findUnique({
+      where: {
+        id: id,
+        userId: session.user.id,
+      },
+    });
+
+    if (!task) {
+      return res.status(404).send({
+        message: "Task not found",
+        success: false,
+      });
+    }
+
+    await db.task.delete({
+      where: {
+        id: id,
+      },
+    });
+
+    return res.status(200).json({
+      message: "Task deleted",
+      success: true,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      message: "Error deleting task: " + error,
+      success: false,
+    });
+  }
+}
+
+export async function updateTask(
+  req: Request<{ id: string }, {}, TaskType>,
+  res: Response
+) {
+  const session = await auth.api.getSession({
+    headers: fromNodeHeaders(req.headers),
+  });
+  if (!session) {
+    return res.status(401).send({
+      message: "Unauthorized",
+      success: false,
+    });
+  }
+
+  try {
+    const id = req.params.id;
+    const taskData = req.body;
+
+    if (!taskData) {
+      return res.status(400).json({
+        message: "No task data provided",
+        success: false,
+      });
+    }
+
+    // Check if the task exists and belongs to the user
+    const existingTask = await db.task.findFirst({
+      where: {
+        id: id,
+        OR: [
+          { userId: session.user.id },
+          {
+            assignedTo: {
+              some: {
+                userId: session.user.id,
+              },
+            },
+          },
+        ],
+      },
+      include: {
+        assignedTo: true,
+        resources: true,
+      },
+    });
+
+    if (!existingTask) {
+      return res.status(404).json({
+        message: "Task not found",
+        success: false,
+      });
+    }
+
+    // Extract the fields that need special handling
+    const { assignedTo, resources, parentId, ...updateData } = taskData;
+
+    // Prepare the update data
+    const updateObject: any = {
+      ...updateData,
+    };
+
+    // Handle parent task connection/disconnection
+    if (parentId !== undefined) {
+      if (parentId) {
+        updateObject.parent = { connect: { id: parentId } };
+      } else {
+        // Handle null or empty string parentId - disconnect the relationship
+        updateObject.parent = { disconnect: true };
+      }
+    }
+
+    // Update the task
+    await db.task.update({
+      where: { id },
+      data: updateObject,
+    });
+
+    // Handle resources if provided (delete existing and create new ones)
+    if (resources) {
+      // Delete existing resources
+      await db.taskResource.deleteMany({
+        where: { taskId: id },
+      });
+
+      // Create new resources
+      if (resources.length > 0) {
+        await db.taskResource.createMany({
+          data: resources.map(({ id: resourceId, ...resource }) => ({
+            ...resource,
+            taskId: id,
+          })),
+        });
+      }
+    }
+
+    // Handle assigned users if provided
+    if (assignedTo) {
+      // Delete existing assignments
+      await db.taskAssignment.deleteMany({
+        where: { taskId: id },
+      });
+
+      // Create new assignments
+      if (assignedTo.length > 0) {
+        await db.taskAssignment.createMany({
+          data: assignedTo.map((user) => ({
+            taskId: id,
+            userId: typeof user === "object" ? user.id : user,
+          })),
+        });
+      }
+    }
+
+    return res.status(200).json({
+      message: "Task updated successfully",
+      success: true,
+    });
+  } catch (error) {
+    console.error("Error updating task:", error);
+    return res.status(500).json({
+      message: "Error updating task: " + error,
       success: false,
     });
   }
