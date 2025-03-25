@@ -4,6 +4,10 @@ import {
   deleteTask,
   getTasks,
   updateTask,
+  updateTaskCompleteStatus,
+  updateTaskKanban,
+  updateTaskPriority,
+  updateTaskStatus,
 } from "../controllers/tasks";
 import { TaskType } from "../types/task";
 
@@ -21,6 +25,54 @@ router.put(
   "/:id",
   async (req: Request<{ id: string }, {}, TaskType>, res: Response) => {
     await updateTask(req, res);
+  }
+);
+
+router.put(
+  "/priority/:id",
+  async (
+    req: Request<{ id: string }, {}, { priority: string }>,
+    res: Response
+  ) => {
+    await updateTaskPriority(req, res);
+  }
+);
+
+router.put(
+  "/completed/:id",
+  async (req: Request<{ id: string }>, res: Response) => {
+    await updateTaskCompleteStatus(req, res);
+  }
+);
+
+router.put(
+  "/status/:id",
+  async (
+    req: Request<
+      { id: string },
+      {},
+      { status: "unscheduled" | "todo" | "inprogress" | "completed" }
+    >,
+    res: Response
+  ) => {
+    await updateTaskStatus(req, res);
+  }
+);
+
+router.put(
+  "/kanban/:id",
+  async (
+    req: Request<
+      { id: string },
+      {},
+      {
+        status: "unscheduled" | "todo" | "inprogress" | "completed";
+        order: number;
+      }
+    >,
+    res: Response
+  ) => {
+    await updateTaskKanban(req, res);
   }
 );
 

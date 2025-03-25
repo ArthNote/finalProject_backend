@@ -5,6 +5,7 @@ import { db } from "../lib/prisma";
 import { decryptData } from "../lib/crypto";
 import { TaskType } from "../types/task";
 
+
 export async function createManualTask(
   req: Request<{}, {}, TaskType>,
   res: Response
@@ -665,6 +666,338 @@ export async function updateTask(
     console.error("Error updating task:", error);
     return res.status(500).json({
       message: "Error updating task: " + error,
+      success: false,
+    });
+  }
+}
+
+export async function updateTaskPriority(
+  req: Request<{ id: string }, {}, { priority: string }>,
+  res: Response
+) {
+  const session = await auth.api.getSession({
+    headers: fromNodeHeaders(req.headers),
+  });
+  if (!session) {
+    return res.status(401).send({
+      message: "Unauthorized",
+      success: false,
+    });
+  }
+
+  try {
+    const id = req.params.id;
+    const { priority } = req.body;
+
+    if (!priority) {
+      return res.status(400).json({
+        message: "No priority value provided",
+        success: false,
+      });
+    }
+
+    // Check if the task exists and belongs to the user or is assigned to the user
+    const existingTask = await db.task.findFirst({
+      where: {
+        id: id,
+        OR: [
+          { userId: session.user.id },
+          {
+            assignedTo: {
+              some: {
+                userId: session.user.id,
+              },
+            },
+          },
+        ],
+      },
+    });
+
+    if (!existingTask) {
+      return res.status(404).json({
+        message: "Task not found",
+        success: false,
+      });
+    }
+
+    // Update only the priority field
+    await db.task.update({
+      where: { id },
+      data: {
+        priority: priority,
+      },
+    });
+
+    return res.status(200).json({
+      message: "Task priority updated successfully",
+      success: true,
+    });
+  } catch (error) {
+    console.error("Error updating task priority:", error);
+    return res.status(500).json({
+      message: "Error updating task priority: " + error,
+      success: false,
+    });
+  }
+}
+
+export async function updateTaskCompleteStatus(
+  req: Request<{ id: string }>,
+  res: Response
+) {
+  const session = await auth.api.getSession({
+    headers: fromNodeHeaders(req.headers),
+  });
+  if (!session) {
+    return res.status(401).send({
+      message: "Unauthorized",
+      success: false,
+    });
+  }
+
+  try {
+    const id = req.params.id;
+
+    if (!id) {
+      return res.status(400).json({
+        message: "No id value provided",
+        success: false,
+      });
+    }
+
+    // Check if the task exists and belongs to the user or is assigned to the user
+    const existingTask = await db.task.findFirst({
+      where: {
+        id: id,
+        OR: [
+          { userId: session.user.id },
+          {
+            assignedTo: {
+              some: {
+                userId: session.user.id,
+              },
+            },
+          },
+        ],
+      },
+    });
+
+    if (!existingTask) {
+      return res.status(404).json({
+        message: "Task not found",
+        success: false,
+      });
+    }
+
+    // Update only the priority field
+    await db.task.update({
+      where: { id },
+      data: {
+        completed: existingTask.completed ? false : true,
+      },
+    });
+
+    return res.status(200).json({
+      message: "Task complete status updated successfully",
+      success: true,
+    });
+  } catch (error) {
+    console.error("Error updating task complete status:", error);
+    return res.status(500).json({
+      message: "Error updating task complete status: " + error,
+      success: false,
+    });
+  }
+}
+
+export async function updateTaskStatus(
+  req: Request<
+    { id: string },
+    {},
+    { status: "unscheduled" | "todo" | "inprogress" | "completed" }
+  >,
+  res: Response
+) {
+  const session = await auth.api.getSession({
+    headers: fromNodeHeaders(req.headers),
+  });
+  if (!session) {
+    return res.status(401).send({
+      message: "Unauthorized",
+      success: false,
+    });
+  }
+
+  try {
+    const id = req.params.id;
+    const status = req.body.status;
+
+    if (!id) {
+      return res.status(400).json({
+        message: "No id value provided",
+        success: false,
+      });
+    }
+
+    if (!status) {
+      return res.status(400).json({
+        message: "No status value provided",
+        success: false,
+      });
+    }
+
+    // Check if the task exists and belongs to the user or is assigned to the user
+    const existingTask = await db.task.findFirst({
+      where: {
+        id: id,
+        OR: [
+          { userId: session.user.id },
+          {
+            assignedTo: {
+              some: {
+                userId: session.user.id,
+              },
+            },
+          },
+        ],
+      },
+    });
+
+    if (!existingTask) {
+      return res.status(404).json({
+        message: "Task not found",
+        success: false,
+      });
+    }
+
+    const isCompleted = status === "completed";
+    const isUnscheduled = status === "unscheduled";
+
+    // Update only the priority field
+    await db.task.update({
+      where: { id },
+      data: {
+        completed: isCompleted,
+        status: isCompleted ? existingTask.status : status,
+        scheduled: !isUnscheduled,
+        date: isUnscheduled ? null : existingTask.date,
+        startTime: isUnscheduled ? null : existingTask.startTime,
+        endTime: isUnscheduled ? null : existingTask.endTime,
+        duration: isUnscheduled ? null : existingTask.duration,
+      },
+    });
+
+    return res.status(200).json({
+      message: "Task status updated successfully",
+      success: true,
+    });
+  } catch (error) {
+    console.error("Error updating task status:", error);
+    return res.status(500).json({
+      message: "Error updating task status: " + error,
+      success: false,
+    });
+  }
+}
+
+export async function updateTaskKanban(
+  req: Request<
+    { id: string },
+    {},
+    {
+      status: "unscheduled" | "todo" | "inprogress" | "completed";
+      order: number;
+    }
+  >,
+  res: Response
+) {
+  const session = await auth.api.getSession({
+    headers: fromNodeHeaders(req.headers),
+  });
+  if (!session) {
+    return res.status(401).send({
+      message: "Unauthorized",
+      success: false,
+    });
+  }
+
+  try {
+    const id = req.params.id;
+    const { order, status } = req.body;
+
+    if (!id) {
+      return res.status(400).json({
+        message: "No id value provided",
+        success: false,
+      });
+    }
+
+    if (!status) {
+      return res.status(400).json({
+        message: "No status value provided",
+        success: false,
+      });
+    }
+
+    // Ensure order is a valid positive number
+    const safeOrder = Math.max(1, Number(order) || 1000);
+    if (safeOrder <= 0) {
+      return res.status(400).json({
+        message: "Order must be a positive number",
+        success: false,
+      });
+    }
+
+    // Check if the task exists and belongs to the user or is assigned to the user
+    const existingTask = await db.task.findFirst({
+      where: {
+        id: id,
+        OR: [
+          { userId: session.user.id },
+          {
+            assignedTo: {
+              some: {
+                userId: session.user.id,
+              },
+            },
+          },
+        ],
+      },
+    });
+
+    if (!existingTask) {
+      return res.status(404).json({
+        message: "Task not found",
+        success: false,
+      });
+    }
+
+    const isCompleted = status === "completed";
+    const isUnscheduled = status === "unscheduled";
+
+    // Update task with the safe order value
+    await db.task.update({
+      where: { id },
+      data: {
+        completed: isCompleted,
+        status: isCompleted ? existingTask.status : status,
+        scheduled: !isUnscheduled,
+        date: isUnscheduled ? null : existingTask.date,
+        startTime: isUnscheduled ? null : existingTask.startTime,
+        endTime: isUnscheduled ? null : existingTask.endTime,
+        duration: isUnscheduled ? null : existingTask.duration,
+        order: safeOrder,
+      },
+    });
+
+    return res.status(200).json({
+      message: "Task status updated successfully",
+      success: true,
+    });
+  } catch (error) {
+    console.error("Error updating task status:", error);
+    return res.status(500).json({
+      message: "Error updating task status: " + error,
       success: false,
     });
   }
