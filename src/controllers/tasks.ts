@@ -4,7 +4,7 @@ import { fromNodeHeaders } from "better-auth/node";
 import { db } from "../lib/prisma";
 import { decryptData } from "../lib/crypto";
 import { TaskType } from "../types/task";
-
+import { generateTasks } from "../lib/gemini";
 
 export async function createManualTask(
   req: Request<{}, {}, TaskType>,
@@ -65,6 +65,158 @@ export async function createManualTask(
     return res.status(200).json({
       message: "Task created successfully",
       success: true,
+    });
+  } catch (error) {
+    console.error("Error creating task:", error);
+    return res.status(400).json({
+      message: "Error creating task: " + error,
+      success: false,
+    });
+  }
+}
+
+export async function saveTasksList(
+  req: Request<{}, {}, TaskType[]>,
+  res: Response
+) {
+  const headers = fromNodeHeaders(req.headers);
+  const session = await auth.api.getSession({
+    headers: headers,
+  });
+  if (!session) {
+    return res.status(401).send({
+      message: "Unauthorized",
+      success: false,
+    });
+  }
+
+  try {
+    const tasks = req.body;
+
+    if (!tasks) {
+      return res.status(400).json({
+        message: "No tasks data provided",
+        success: false,
+      });
+    }
+
+    // Create tasks in the database
+    await Promise.all(
+      tasks.map(async (task) => {
+        const { id, parentId, resources, assignedTo, ...taskData } = task;
+
+        // Ensure date fields are properly formatted as Date objects
+        const formattedTaskData = {
+          ...taskData,
+          // Convert date string to Date object or keep null
+          date: taskData.date ? new Date(taskData.date) : null,
+          // Convert startTime string to Date object or keep null
+          startTime: taskData.startTime ? new Date(taskData.startTime) : null,
+          // Convert endTime string to Date object or keep null
+          endTime: taskData.endTime ? new Date(taskData.endTime) : null,
+        };
+
+        await db.task.create({
+          data: {
+            ...formattedTaskData,
+            user: { connect: { id: session.user.id } }, // Connect the current user to the task
+            ...(parentId ? { parent: { connect: { id: parentId } } } : {}),
+            ...(assignedTo && assignedTo.length > 0
+              ? {
+                  assignedTo: {
+                    create: assignedTo.map((userId) => ({
+                      user: {
+                        connect: {
+                          id: typeof userId === "object" ? userId.id : userId,
+                        },
+                      },
+                    })),
+                  },
+                }
+              : {}),
+            ...(resources && resources.length > 0
+              ? {
+                  resources: {
+                    create: resources.map(({ id, ...resource }) => ({
+                      ...resource,
+                    })),
+                  },
+                }
+              : {}),
+          },
+        });
+      })
+    );
+
+    return res.status(200).json({
+      message: "Tasks created successfully",
+      success: true,
+    });
+  } catch (error) {
+    console.error("Error creating tasks:", error);
+    return res.status(400).json({
+      message: "Error creating tasks: " + error,
+      success: false,
+    });
+  }
+}
+
+export async function generateTasksWithAi(
+  req: Request<
+    {},
+    {},
+    {
+      prompt: string;
+      date: string;
+    }
+  >,
+  res: Response
+) {
+  const headers = fromNodeHeaders(req.headers);
+  const session = await auth.api.getSession({
+    headers: headers,
+  });
+  if (!session) {
+    return res.status(401).send({
+      message: "Unauthorized",
+      success: false,
+    });
+  }
+
+  try {
+    const { date, prompt } = req.body;
+
+    if (!prompt || !date) {
+      return res.status(400).json({
+        message: "No prompt or date provided",
+        success: false,
+      });
+    }
+
+    // Generate tasks using AI
+    const tasksString = await generateTasks(prompt, date);
+
+    if (!tasksString) {
+      return res.status(400).json({
+        message: "No tasks generated",
+        success: false,
+      });
+    }
+
+    // Parse the generated tasks string into an array of TaskType objects
+    const tasks = JSON.parse(tasksString) as TaskType[];
+
+    if (!Array.isArray(tasks)) {
+      return res.status(400).json({
+        message: "Invalid tasks format",
+        success: false,
+      });
+    }
+
+    return res.status(200).json({
+      message: "Tasks created successfully",
+      success: true,
+      data: tasks,
     });
   } catch (error) {
     console.error("Error creating task:", error);
@@ -998,6 +1150,253 @@ export async function updateTaskKanban(
     console.error("Error updating task status:", error);
     return res.status(500).json({
       message: "Error updating task status: " + error,
+      success: false,
+    });
+  }
+}
+
+export async function getTasksByDate(
+  req: Request<{}, {}, { date: string }>,
+  res: Response
+) {
+  const headers = fromNodeHeaders(req.headers);
+  const session = await auth.api.getSession({
+    headers: headers,
+  });
+  if (!session) {
+    return res.status(401).send({
+      message: "Unauthorized",
+      success: false,
+    });
+  }
+
+  try {
+    const { date } = req.body;
+
+    if (!date) {
+      return res.status(400).json({
+        message: "Date parameter is required",
+        success: false,
+      });
+    }
+
+    // Create date objects for the start and end of the requested day
+    const requestedDate = new Date(date as string);
+    requestedDate.setHours(0, 0, 0, 0); // Start of day
+
+    const endOfDay = new Date(requestedDate);
+    endOfDay.setHours(23, 59, 59, 999); // End of day
+
+    // Query for scheduled tasks on the specified date
+    const tasks = await db.task.findMany({
+      where: {
+        OR: [
+          { userId: session.user.id }, // Tasks created by the user
+          {
+            assignedTo: {
+              some: {
+                userId: session.user.id, // Tasks assigned to the user
+              },
+            },
+          },
+        ],
+        scheduled: true,
+        date: {
+          gte: requestedDate,
+          lte: endOfDay,
+        },
+      },
+      orderBy: [{ startTime: "asc" }, { priority: "desc" }],
+      include: {
+        resources: true,
+        assignedTo: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                image: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    // Transform user data to match our AssignedUser interface
+    const transformedTasks = tasks.map((task) => ({
+      ...task,
+      assignedTo:
+        task.assignedTo?.map((assignment: any) => ({
+          id: assignment.user.id,
+          name: assignment.user.name,
+          profilePic: assignment.user.image,
+        })) || [],
+    }));
+
+    return res.status(200).json({
+      message: "Tasks fetched successfully",
+      tasks: transformedTasks,
+      success: true,
+    });
+  } catch (error) {
+    console.error("Error fetching tasks by date:", error);
+    return res.status(500).json({
+      message: "Error fetching tasks by date: " + error,
+      success: false,
+    });
+  }
+}
+
+export async function updateTaskTimes(
+  req: Request<
+    { id: string },
+    {},
+    { startTime: string; endTime: string; duration: number; date: string }
+  >,
+  res: Response
+) {
+  const session = await auth.api.getSession({
+    headers: fromNodeHeaders(req.headers),
+  });
+  if (!session) {
+    return res.status(401).send({
+      message: "Unauthorized",
+      success: false,
+    });
+  }
+
+  try {
+    const id = req.params.id;
+    const { startTime, endTime, duration, date } = req.body;
+
+    if (!id) {
+      return res.status(400).json({
+        message: "No task id provided",
+        success: false,
+      });
+    }
+
+    if (!startTime || !endTime || !duration) {
+      return res.status(400).json({
+        message: "Missing required time parameters",
+        success: false,
+      });
+    }
+
+    const existingTask = await db.task.findUnique({
+      where: { id },
+    });
+
+    if (!existingTask) {
+      return res.status(404).json({
+        message: "Task not found",
+        success: false,
+      });
+    }
+
+    // Update task with new time values
+    await db.task.update({
+      where: { id },
+      data: {
+        startTime: new Date(startTime),
+        endTime: new Date(endTime),
+        duration,
+        date: new Date(date),
+        scheduled: true, // Ensure the task is marked as scheduled
+      },
+    });
+
+    return res.status(200).json({
+      message: "Task times updated successfully",
+      success: true,
+    });
+  } catch (error) {
+    console.error("Error updating task times:", error);
+    return res.status(500).json({
+      message: "Error updating task times: " + error,
+      success: false,
+    });
+  }
+}
+
+export async function getCalendarTasks(req: Request, res: Response) {
+  const session = await auth.api.getSession({
+    headers: fromNodeHeaders(req.headers),
+  });
+  if (!session) {
+    return res.status(401).send({
+      message: "Unauthorized",
+      success: false,
+    });
+  }
+
+  try {
+    const { startDate, endDate } = req.query;
+
+    if (!startDate || !endDate) {
+      return res.status(400).json({
+        message: "Start and end dates are required",
+        success: false,
+      });
+    }
+
+    const start = new Date(startDate as string);
+    const end = new Date(endDate as string);
+    end.setHours(23, 59, 59, 999); // Include the entire end date
+
+    const tasks = await db.task.findMany({
+      where: {
+        OR: [
+          { userId: session.user.id },
+          {
+            assignedTo: {
+              some: {
+                userId: session.user.id,
+              },
+            },
+          },
+        ],
+        scheduled: true,
+        date: {
+          gte: start,
+          lte: end,
+        },
+      },
+      include: {
+        assignedTo: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                image: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: [{ date: "asc" }, { startTime: "asc" }],
+    });
+
+    const transformedTasks = tasks.map((task) => ({
+      ...task,
+      assignedTo:
+        task.assignedTo?.map((assignment) => ({
+          id: assignment.user.id,
+          name: assignment.user.name,
+          profilePic: assignment.user.image,
+        })) || [],
+    }));
+
+    return res.status(200).json({
+      tasks: transformedTasks,
+      success: true,
+    });
+  } catch (error) {
+    console.error("Error fetching calendar tasks:", error);
+    return res.status(500).json({
+      message: "Error fetching calendar tasks: " + error,
       success: false,
     });
   }

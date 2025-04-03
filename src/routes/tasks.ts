@@ -2,12 +2,17 @@ import { Router, Request, Response } from "express";
 import {
   createManualTask,
   deleteTask,
+  generateTasksWithAi,
   getTasks,
+  getTasksByDate,
+  getCalendarTasks,
+  saveTasksList,
   updateTask,
   updateTaskCompleteStatus,
   updateTaskKanban,
   updateTaskPriority,
   updateTaskStatus,
+  updateTaskTimes,
 } from "../controllers/tasks";
 import { TaskType } from "../types/task";
 
@@ -19,6 +24,14 @@ router.post("/manual", async (req: Request, res: Response) => {
 
 router.get("/", async (req: Request, res: Response) => {
   await getTasks(req, res);
+});
+
+router.post("/ai", async (req: Request, res: Response) => {
+  await generateTasksWithAi(req, res);
+});
+
+router.post("/all", async (req: Request, res: Response) => {
+  await saveTasksList(req, res);
 });
 
 router.put(
@@ -76,8 +89,30 @@ router.put(
   }
 );
 
+router.put(
+  "/times/:id",
+  async (
+    req: Request<
+      { id: string },
+      {},
+      { startTime: string; endTime: string; duration: number; date: string }
+    >,
+    res: Response
+  ) => {
+    await updateTaskTimes(req, res);
+  }
+);
+
 router.delete("/:id", async (req: Request, res: Response) => {
   await deleteTask(req, res);
+});
+
+router.post("/byDate", async (req: Request, res: Response) => {
+  await getTasksByDate(req, res);
+});
+
+router.get("/calendar", async (req: Request, res: Response) => {
+  await getCalendarTasks(req, res);
 });
 
 export default router;
