@@ -5,12 +5,15 @@ import cors from "cors";
 import usersRouter from "./routes/users";
 import subscriptionsRouter from "./routes/subscriptions";
 import tasksRouter from "./routes/tasks";
+import friendsRouter from "./routes/friends";
+import chatsRouter from "./routes/chats";
+import messagesRouter from "./routes/messages";
 
 import dotenv from "dotenv";
+import { app, server as socketServer } from "./lib/socket";
 
 dotenv.config();
 
-const app = express();
 const PORT = process.env.PORT || 8080;
 
 app.use(
@@ -45,7 +48,10 @@ app.use(express.json());
 app.use("/api/users", usersRouter);
 app.use("/api/subscriptions", subscriptionsRouter);
 app.use("/api/tasks", tasksRouter);
+app.use("/api/friends", friendsRouter);
+app.use("/api/chats", chatsRouter);
+app.use("/api/messages", messagesRouter);
 
-app.listen(PORT, () => {
+socketServer.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });

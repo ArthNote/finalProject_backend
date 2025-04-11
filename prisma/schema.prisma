@@ -33,8 +33,12 @@ model User {
   stripeCustomerId String?
 
   // New relation for task assignments
-  assignedTasks TaskAssignment[]
-  Task          Task[]
+  assignedTasks          TaskAssignment[]
+  Task                   Task[]
+  sentFriendRequests     Friendship[]      @relation("SentFriendRequests")
+  receivedFriendRequests Friendship[]      @relation("ReceivedFriendRequests")
+  chats                  ChatParticipant[]
+  messages               Message[]
 
   @@unique([email])
   @@unique([username])
@@ -177,4 +181,62 @@ model TaskAssignment {
 
   @@unique([taskId, userId])
   @@map("task_assignment")
+}
+
+model Friendship {
+  id        String   @id @unique @default(cuid())
+  status    String // "pending", "accepted", "blocked"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  senderId   String
+  receiverId String
+  sender     User   @relation("SentFriendRequests", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver   User   @relation("ReceivedFriendRequests", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@unique([senderId, receiverId])
+  @@map("friendship")
+}
+model Chat {
+  id           String            @id @unique @default(cuid())
+  name         String?
+  type         String // "individual" or "group"
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  messages     Message[]
+  participants ChatParticipant[]
+
+  @@map("chat")
+}
+
+model ChatParticipant {
+  id       String   @id @unique @default(cuid())
+  userId   String
+  chatId   String
+  role     String   @default("member") // "admin" or "member"
+  joinedAt DateTime @default(now())
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chat     Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, chatId])
+  @@map("chat_participant")
+}
+
+model Message {
+  id        String   @id @unique @default(cuid())
+  content   String
+  type      String   @default("text") // "text", "file", "image"
+  fileUrl   String?
+  fileName  String?
+  fileSize  Int?
+  senderId  String
+  chatId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  status    String   @default("sent") // "sent", "delivered", "read"
+  sender    User     @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  chat      Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
+
+  @@map("message")
 }

@@ -289,6 +289,11 @@ export const auth = betterAuth({
         },
         plans: [
           {
+            name: "free",
+            priceId: process.env.STRIPE_FREE_MONTHLY_PRICE_ID,
+            annualDiscountPriceId: process.env.STRIPE_FREE_ANNUAL_PRICE_ID,
+          },
+          {
             name: "individual",
             priceId: process.env.STRIPE_INDIVIDUAL_MONTHLY_PRICE_ID,
             annualDiscountPriceId:
