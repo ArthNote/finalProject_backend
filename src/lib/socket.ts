@@ -7,7 +7,7 @@ const server = http.createServer(app);
 
 const io = new Server(server, {
   cors: {
-    origin: process.env.BETTER_AUTH_URL,
+    origin: "http://localhost:3000",
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     credentials: true,
     allowedHeaders: [
@@ -31,6 +31,10 @@ export const getReceiverSocketId = (receiverId: string) => {
   return userSocketMap[receiverId];
 };
 
+export const getOnlineUsers = () => {
+  return Object.keys(userSocketMap);
+};
+
 io.on("connection", (socket) => {
   console.log("a user connected", socket.id);
 
@@ -41,6 +45,13 @@ io.on("connection", (socket) => {
   }
 
   io.emit("getOnlineUsers", Object.keys(userSocketMap));
+
+  socket.on("checkOnlineFriends", (friendIds: string[]) => {
+    if (!Array.isArray(friendIds)) return;
+
+    const onlineFriends = friendIds.filter((id) => Boolean(userSocketMap[id]));
+    socket.emit("onlineFriends", onlineFriends);
+  });
 
   socket.on("disconnect", () => {
     console.log("user disconnected", socket.id);

@@ -21,7 +21,7 @@
     "@daveyplate/better-auth-ui": "^1.2.19",
     "@google/genai": "^0.7.0",
     "@prisma/client": "^6.5.0",
-    "better-auth": "^1.2.3",
+    "better-auth": "^1.2.5",
     "cloudinary": "^2.6.0",
     "cookie": "^1.0.2",
     "cors": "^2.8.5",
