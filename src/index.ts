@@ -9,6 +9,7 @@ import tasksRouter from "./routes/tasks";
 import friendsRouter from "./routes/friends";
 import chatsRouter from "./routes/chats";
 import messagesRouter from "./routes/messages";
+import projectsRouter from "./routes/projects";
 
 import { app, server as socketServer } from "./lib/socket";
 
@@ -57,6 +58,7 @@ app.use("/api/tasks", tasksRouter);
 app.use("/api/friends", friendsRouter);
 app.use("/api/chats", chatsRouter);
 app.use("/api/messages", messagesRouter);
+app.use("/api/projects", projectsRouter);
 
 socketServer.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
