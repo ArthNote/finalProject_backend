@@ -1,7 +1,8 @@
-import express, { Request, Response } from "express";
+import express from "express";
+import cors from "cors";
+import dotenv from "dotenv";
 import { toNodeHandler } from "better-auth/node";
 import { auth } from "./lib/auth";
-import cors from "cors";
 import usersRouter from "./routes/users";
 import subscriptionsRouter from "./routes/subscriptions";
 import tasksRouter from "./routes/tasks";
@@ -9,38 +10,25 @@ import friendsRouter from "./routes/friends";
 import chatsRouter from "./routes/chats";
 import messagesRouter from "./routes/messages";
 
-import dotenv from "dotenv";
 import { app, server as socketServer } from "./lib/socket";
 
 dotenv.config();
 
-const PORT = process.env.PORT || 8080;
+const PORT = process.env.PORT || 3001;
 
+// Configure CORS
 app.use(
   cors({
-    origin: process.env.BETTER_AUTH_URL,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    origin: process.env.FRONTEND_URL || "http://localhost:3000",
     credentials: true,
-    allowedHeaders: [
-      "Content-Type",
-      "Authorization",
-      "X-Requested-With",
-      "X-CSRF-Token",
-      "Accept",
-      "Accept-Version",
-      "Content-Length",
-      "Content-MD5",
-      "Date",
-      "X-Api-Version",
-    ],
   })
 );
-app.options("*", cors());
-app.all("/api/auth/*", toNodeHandler(auth));
 
-app.options("*", (req, res) => {
-  res.status(200).end();
-});
+// Increase JSON payload limit to 50MB for file uploads
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
+
+app.all("/api/auth/*", toNodeHandler(auth));
 
 // Add body parsing middleware
 app.use(express.json());
@@ -53,5 +41,5 @@ app.use("/api/chats", chatsRouter);
 app.use("/api/messages", messagesRouter);
 
 socketServer.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });

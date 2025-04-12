@@ -198,6 +198,7 @@ model Friendship {
   @@unique([senderId, receiverId])
   @@map("friendship")
 }
+
 model Chat {
   id           String            @id @unique @default(cuid())
   name         String?
@@ -235,8 +236,13 @@ model Message {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   status    String   @default("sent") // "sent", "delivered", "read"
-  sender    User     @relation(fields: [senderId], references: [id], onDelete: Cascade)
-  chat      Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
+
+  replyToId String?
+  replyTo   Message?  @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies   Message[] @relation("MessageReplies")
+
+  sender User @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  chat   Chat @relation(fields: [chatId], references: [id], onDelete: Cascade)
 
   @@map("message")
 }
