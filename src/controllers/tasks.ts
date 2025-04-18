@@ -30,12 +30,14 @@ export async function createManualTask(
         success: false,
       });
     }
-    const { id, parentId, resources, assignedTo, ...taskData } = task;
+    const { id, parentId, resources, assignedTo, projectId, ...taskData } =
+      task;
 
     await db.task.create({
       data: {
         ...taskData,
-        user: { connect: { id: session.user.id } }, // Connect the current user to the task
+        user: { connect: { id: session.user.id } },
+        ...(projectId ? { project: { connect: { id: projectId } } } : {}),
         ...(parentId ? { parent: { connect: { id: parentId } } } : {}),
         ...(assignedTo && assignedTo.length > 0
           ? {
@@ -103,7 +105,8 @@ export async function saveTasksList(
     // Create tasks in the database
     await Promise.all(
       tasks.map(async (task) => {
-        const { id, parentId, resources, assignedTo, ...taskData } = task;
+        const { id, parentId, resources, assignedTo, projectId, ...taskData } =
+          task;
 
         // Ensure date fields are properly formatted as Date objects
         const formattedTaskData = {
@@ -119,6 +122,8 @@ export async function saveTasksList(
         await db.task.create({
           data: {
             ...formattedTaskData,
+            ...(projectId ? { project: { connect: { id: projectId } } } : {}),
+
             user: { connect: { id: session.user.id } }, // Connect the current user to the task
             ...(parentId ? { parent: { connect: { id: parentId } } } : {}),
             ...(assignedTo && assignedTo.length > 0
@@ -501,7 +506,7 @@ export async function getTasks(req: Request, res: Response) {
       inprogressTasks,
       inprogressTotal,
     ] = await Promise.all([
-      // Todo tasks - only get if filter is "all" or "scheduled"
+      
       scheduled !== "unscheduled"
         ? db.task.findMany({
             where: todoWhere,
@@ -521,11 +526,18 @@ export async function getTasks(req: Request, res: Response) {
                   },
                 },
               },
+              project: {
+                select: {
+                  id: true,
+                  name: true,
+                  ownerId: true,
+                },
+              },
             },
           })
         : Promise.resolve([]),
 
-      // Todo tasks count
+      
       scheduled !== "unscheduled"
         ? db.task.count({ where: todoWhere })
         : Promise.resolve(0),
@@ -547,6 +559,13 @@ export async function getTasks(req: Request, res: Response) {
                   image: true,
                 },
               },
+            },
+          },
+          project: {
+            select: {
+              id: true,
+              name: true,
+              ownerId: true,
             },
           },
         },
@@ -573,6 +592,13 @@ export async function getTasks(req: Request, res: Response) {
                       image: true,
                     },
                   },
+                },
+              },
+              project: {
+                select: {
+                  id: true,
+                  name: true,
+                  ownerId: true,
                 },
               },
             },
@@ -602,6 +628,13 @@ export async function getTasks(req: Request, res: Response) {
                       image: true,
                     },
                   },
+                },
+              },
+              project: {
+                select: {
+                  id: true,
+                  name: true,
+                  ownerId: true,
                 },
               },
             },
@@ -1187,15 +1220,14 @@ export async function getTasksByDate(
     const endOfDay = new Date(requestedDate);
     endOfDay.setHours(23, 59, 59, 999); // End of day
 
-    // Query for scheduled tasks on the specified date
     const tasks = await db.task.findMany({
       where: {
         OR: [
-          { userId: session.user.id }, // Tasks created by the user
+          { userId: session.user.id },
           {
             assignedTo: {
               some: {
-                userId: session.user.id, // Tasks assigned to the user
+                userId: session.user.id,
               },
             },
           },
@@ -1206,9 +1238,7 @@ export async function getTasksByDate(
           lte: endOfDay,
         },
       },
-      orderBy: [{ startTime: "asc" }, { priority: "desc" }],
       include: {
-        resources: true,
         assignedTo: {
           include: {
             user: {
@@ -1220,18 +1250,46 @@ export async function getTasksByDate(
             },
           },
         },
+        resources: true,
+        project: {
+          // Add this section to include project details
+          select: {
+            id: true,
+            name: true,
+            ownerId: true,
+          },
+        },
       },
     });
 
-    // Transform user data to match our AssignedUser interface
+    // Transform the response to match the expected format
     const transformedTasks = tasks.map((task) => ({
       ...task,
+      // Ensure dates are properly formatted
+      date: task.date ? new Date(task.date).toISOString() : null,
+      startTime: task.startTime ? new Date(task.startTime).toISOString() : null,
+      endTime: task.endTime ? new Date(task.endTime).toISOString() : null,
+      createdAt: new Date(task.createdAt).toISOString(),
+      updatedAt: new Date(task.updatedAt).toISOString(),
+      // Transform assignees
       assignedTo:
-        task.assignedTo?.map((assignment: any) => ({
+        task.assignedTo?.map((assignment) => ({
           id: assignment.user.id,
           name: assignment.user.name,
           profilePic: assignment.user.image,
         })) || [],
+      // Transform project info
+      project: task.project
+        ? {
+            id: task.project.id,
+            name: task.project.name,
+            ownerId: task.project.ownerId,
+          }
+        : null,
+      // Ensure other fields have default values
+      status: task.status || "unscheduled",
+      order: task.order || 0,
+      tags: task.tags || [],
     }));
 
     return res.status(200).json({

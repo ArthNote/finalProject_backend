@@ -142,14 +142,57 @@ export const getProject = async (req: Request, res: Response) => {
             },
           },
         },
-        tasks: true,
+        tasks: {
+          include: {
+            project: {
+              select: {
+                id: true,
+                name: true,
+                ownerId: true,
+              },
+            },
+            assignedTo: {
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    name: true,
+                    image: true,
+                  },
+                },
+              },
+            },
+          },
+        },
       },
     });
 
+    // Transform tasks to include proper project info
+    if (project) {
+      project.tasks = project.tasks.map((task) => ({
+        ...task,
+        project: {
+          id: project.id,
+          name: project.name,
+          ownerId: project.ownerId,
+        },
+        assignedTo:
+          task.assignedTo?.map((assignment) => ({
+            ...assignment,
+            user: {
+              id: assignment.user.id,
+              name: assignment.user.name,
+              image: assignment.user.image,
+            },
+          })) || [],
+      }));
+    }
+
     if (!project) {
-      return res
-        .status(404)
-        .json({ message: "Project not found", success: false });
+      return res.status(404).json({
+        message: "Project not found",
+        success: false,
+      });
     }
 
     return res.status(200).json({
@@ -242,6 +285,13 @@ export const updateProject = async (req: Request, res: Response) => {
     const projectData: UpdateProjectDTO = req.body;
     const userId = session.user?.id;
 
+    const data: UpdateProjectDTO = {
+      ...projectData,
+      ...(projectData.progress !== undefined && {
+        progress: Number(projectData.progress),
+      }),
+    };
+
     // Check if user is owner or admin
     const projectMember = await db.projectMember.findUnique({
       where: {
@@ -258,7 +308,7 @@ export const updateProject = async (req: Request, res: Response) => {
 
     const project = await db.project.update({
       where: { id },
-      data: projectData,
+      data: data,
       include: {
         owner: {
           select: {

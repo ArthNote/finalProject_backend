@@ -292,12 +292,18 @@ export const auth = betterAuth({
             name: "free",
             priceId: process.env.STRIPE_FREE_MONTHLY_PRICE_ID,
             annualDiscountPriceId: process.env.STRIPE_FREE_ANNUAL_PRICE_ID,
+            limits: {
+              storage: 5,
+            },
           },
           {
             name: "individual",
             priceId: process.env.STRIPE_INDIVIDUAL_MONTHLY_PRICE_ID,
             annualDiscountPriceId:
               process.env.STRIPE_INDIVIDUAL_ANNUAL_PRICE_ID,
+            limits: {
+              storage: 25,
+            },
             freeTrial: {
               days: 7,
               onTrialStart: async (subscription) => {
@@ -357,6 +363,10 @@ export const auth = betterAuth({
             name: "team",
             priceId: process.env.STRIPE_TEAM_MONTHLY_PRICE_ID,
             annualDiscountPriceId: process.env.STRIPE_TEAM_ANNUAL_PRICE_ID,
+            limits: {
+              storage: 100,
+              seats: 10,
+            },
             freeTrial: {
               days: 7,
               onTrialStart: async (subscription) => {

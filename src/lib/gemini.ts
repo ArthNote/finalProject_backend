@@ -34,7 +34,8 @@ const SYSTEM_PROMPT = `To generate tasks in JSON format for a Kanban-like dashbo
 - IMPORTANT: Always include the "date" field in every task:
   - Set an appropriate date based on the task deadline
   - Use null if no specific date is mentioned
-  
+
+- The projectId field should be null always
   
 - the default value for resources and tags and assignedTo is an empty array
 - the default value for order is 0
@@ -71,6 +72,11 @@ async function generateTasks(prompt: string, date: string) {
               type: Type.STRING,
               description: "Brief description of the task",
               nullable: false,
+            },
+            projectId: {
+              type: Type.STRING,
+              description: "Project ID for task association (optional)",
+              nullable: true,
             },
             description: {
               type: Type.STRING,
