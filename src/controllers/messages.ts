@@ -42,7 +42,7 @@ export async function sendMessage(req: Request, res: Response) {
     if (fileData && (type === "file" || type === "image")) {
       console.log("Backend: Uploading file to Cloudinary");
       try {
-        const uploadResult = await uploadToCloudinary(
+        const uploadResult = await uploadToCloudinary.upload(
           fileData,
           type === "image" ? "images" : "files"
         );

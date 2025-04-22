@@ -16,7 +16,9 @@ export interface TaskType {
   status?: string; // Added status field for kanban view
   order?: number; // Added order field for kanban sorting
   assignedTo?: AssignedUser[]; // Changed to include user details
-  projectId?: string | null; // Optional project ID for task association
+  projectId?: string | null;
+  teamId?: string;
+  createdAt?: Date; // Optional task creation date
 }
 
 export interface AssignedUser {

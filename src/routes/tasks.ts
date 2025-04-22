@@ -80,7 +80,8 @@ router.put(
       {},
       {
         status: "unscheduled" | "todo" | "inprogress" | "completed";
-        order: number;
+
+        destinationIndex: number;
       }
     >,
     res: Response

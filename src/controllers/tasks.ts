@@ -30,8 +30,15 @@ export async function createManualTask(
         success: false,
       });
     }
-    const { id, parentId, resources, assignedTo, projectId, ...taskData } =
-      task;
+    const {
+      id,
+      parentId,
+      resources,
+      assignedTo,
+      projectId,
+      teamId,
+      ...taskData
+    } = task;
 
     await db.task.create({
       data: {
@@ -39,6 +46,7 @@ export async function createManualTask(
         user: { connect: { id: session.user.id } },
         ...(projectId ? { project: { connect: { id: projectId } } } : {}),
         ...(parentId ? { parent: { connect: { id: parentId } } } : {}),
+        ...(teamId ? { team: { connect: { id: teamId } } } : {}),
         ...(assignedTo && assignedTo.length > 0
           ? {
               assignedTo: {
@@ -63,6 +71,17 @@ export async function createManualTask(
           : {}),
       },
     });
+
+    if (teamId) {
+      await db.teamActivity.create({
+        data: {
+          teamId: teamId,
+          action: "created",
+          type: "task",
+          userId: session.user.id,
+        },
+      });
+    }
 
     return res.status(200).json({
       message: "Task created successfully",
@@ -105,8 +124,15 @@ export async function saveTasksList(
     // Create tasks in the database
     await Promise.all(
       tasks.map(async (task) => {
-        const { id, parentId, resources, assignedTo, projectId, ...taskData } =
-          task;
+        const {
+          id,
+          parentId,
+          resources,
+          assignedTo,
+          teamId,
+          projectId,
+          ...taskData
+        } = task;
 
         // Ensure date fields are properly formatted as Date objects
         const formattedTaskData = {
@@ -122,28 +148,23 @@ export async function saveTasksList(
         await db.task.create({
           data: {
             ...formattedTaskData,
-            ...(projectId ? { project: { connect: { id: projectId } } } : {}),
-
-            user: { connect: { id: session.user.id } }, // Connect the current user to the task
-            ...(parentId ? { parent: { connect: { id: parentId } } } : {}),
+            teamId: task.teamId,
+            userId: session.user.id,
+            ...(teamId && {
+              teamId: teamId, // Use direct ID assignment instead of connect
+            }),
+            // Use proper Prisma relations syntax
+            ...(projectId && {
+              projectId: projectId, // Use direct ID assignment instead of connect
+            }),
+            ...(parentId && {
+              parentId: parentId, // Use direct ID assignment instead of connect
+            }),
             ...(assignedTo && assignedTo.length > 0
               ? {
                   assignedTo: {
                     create: assignedTo.map((userId) => ({
-                      user: {
-                        connect: {
-                          id: typeof userId === "object" ? userId.id : userId,
-                        },
-                      },
-                    })),
-                  },
-                }
-              : {}),
-            ...(resources && resources.length > 0
-              ? {
-                  resources: {
-                    create: resources.map(({ id, ...resource }) => ({
-                      ...resource,
+                      userId: typeof userId === "object" ? userId.id : userId,
                     })),
                   },
                 }
@@ -506,13 +527,12 @@ export async function getTasks(req: Request, res: Response) {
       inprogressTasks,
       inprogressTotal,
     ] = await Promise.all([
-      
       scheduled !== "unscheduled"
         ? db.task.findMany({
             where: todoWhere,
             skip: todoSkip,
             take: Number(todoLimit),
-            orderBy: { date: "asc" },
+            orderBy: { order: "asc" },
             include: {
               resources: true,
               assignedTo: {
@@ -537,7 +557,6 @@ export async function getTasks(req: Request, res: Response) {
           })
         : Promise.resolve([]),
 
-      
       scheduled !== "unscheduled"
         ? db.task.count({ where: todoWhere })
         : Promise.resolve(0),
@@ -547,7 +566,7 @@ export async function getTasks(req: Request, res: Response) {
         where: completedWhere,
         skip: completedSkip,
         take: Number(completedLimit),
-        orderBy: { date: "desc" },
+        orderBy: { order: "asc" },
         include: {
           resources: true,
           assignedTo: {
@@ -580,7 +599,7 @@ export async function getTasks(req: Request, res: Response) {
             where: unscheduledWhere,
             skip: unscheduledSkip,
             take: Number(unscheduledLimit),
-            orderBy: { createdAt: "desc" },
+            orderBy: { order: "asc" },
             include: {
               resources: true,
               assignedTo: {
@@ -616,7 +635,7 @@ export async function getTasks(req: Request, res: Response) {
             where: inprogressWhere,
             skip: inprogressSkip,
             take: Number(inprogressLimit),
-            orderBy: { date: "asc" },
+            orderBy: { order: "asc" },
             include: {
               resources: true,
               assignedTo: {
@@ -712,11 +731,24 @@ export async function deleteTask(req: Request, res: Response) {
       });
     }
 
+    const teamId = task.teamId;
+
     await db.task.delete({
       where: {
         id: id,
       },
     });
+
+    if (teamId) {
+      await db.teamActivity.create({
+        data: {
+          teamId: teamId,
+          action: "deleted",
+          type: "task",
+          userId: session.user.id,
+        },
+      });
+    }
 
     return res.status(200).json({
       message: "Task deleted",
@@ -784,7 +816,14 @@ export async function updateTask(
     }
 
     // Extract the fields that need special handling
-    const { assignedTo, resources, parentId, ...updateData } = taskData;
+    const {
+      projectId,
+      assignedTo,
+      resources,
+      parentId,
+      id: taskId,
+      ...updateData
+    } = taskData;
 
     // Prepare the update data
     const updateObject: any = {
@@ -804,7 +843,12 @@ export async function updateTask(
     // Update the task
     await db.task.update({
       where: { id },
-      data: updateObject,
+      data: {
+        ...updateData,
+        teamId: updateData.teamId || null,
+        projectId: projectId || null,
+        parentId: parentId || null,
+      },
     });
 
     // Handle resources if provided (delete existing and create new ones)
@@ -841,6 +885,17 @@ export async function updateTask(
           })),
         });
       }
+    }
+
+    if (existingTask.teamId) {
+      await db.teamActivity.create({
+        data: {
+          teamId: existingTask.teamId,
+          action: "updated",
+          type: "task",
+          userId: session.user.id,
+        },
+      });
     }
 
     return res.status(200).json({
@@ -913,6 +968,17 @@ export async function updateTaskPriority(
       },
     });
 
+    if (existingTask.teamId) {
+      await db.teamActivity.create({
+        data: {
+          teamId: existingTask.teamId,
+          action: "updated",
+          type: "task",
+          userId: session.user.id,
+        },
+      });
+    }
+
     return res.status(200).json({
       message: "Task priority updated successfully",
       success: true,
@@ -981,6 +1047,17 @@ export async function updateTaskCompleteStatus(
         completed: existingTask.completed ? false : true,
       },
     });
+
+    if (existingTask.teamId) {
+      await db.teamActivity.create({
+        data: {
+          teamId: existingTask.teamId,
+          action: "updated",
+          type: "task",
+          userId: session.user.id,
+        },
+      });
+    }
 
     return res.status(200).json({
       message: "Task complete status updated successfully",
@@ -1072,6 +1149,17 @@ export async function updateTaskStatus(
       },
     });
 
+    if (existingTask.teamId) {
+      await db.teamActivity.create({
+        data: {
+          teamId: existingTask.teamId,
+          action: "updated",
+          type: "task",
+          userId: session.user.id,
+        },
+      });
+    }
+
     return res.status(200).json({
       message: "Task status updated successfully",
       success: true,
@@ -1091,7 +1179,7 @@ export async function updateTaskKanban(
     {},
     {
       status: "unscheduled" | "todo" | "inprogress" | "completed";
-      order: number;
+      destinationIndex: number; // Changed parameters
     }
   >,
   res: Response
@@ -1108,32 +1196,17 @@ export async function updateTaskKanban(
 
   try {
     const id = req.params.id;
-    const { order, status } = req.body;
+    // Get destinationIndex and status from body
+    const { status, destinationIndex } = req.body;
 
-    if (!id) {
+    if (!id || !status || destinationIndex === undefined) {
       return res.status(400).json({
-        message: "No id value provided",
+        message: "Missing required fields: id, status, destinationIndex",
         success: false,
       });
     }
 
-    if (!status) {
-      return res.status(400).json({
-        message: "No status value provided",
-        success: false,
-      });
-    }
-
-    // Ensure order is a valid positive number
-    const safeOrder = Math.max(1, Number(order) || 1000);
-    if (safeOrder <= 0) {
-      return res.status(400).json({
-        message: "Order must be a positive number",
-        success: false,
-      });
-    }
-
-    // Check if the task exists and belongs to the user or is assigned to the user
+    // Get the existing task
     const existingTask = await db.task.findFirst({
       where: {
         id: id,
@@ -1152,7 +1225,7 @@ export async function updateTaskKanban(
 
     if (!existingTask) {
       return res.status(404).json({
-        message: "Task not found",
+        message: "Task not found or you don't have permission",
         success: false,
       });
     }
@@ -1160,29 +1233,90 @@ export async function updateTaskKanban(
     const isCompleted = status === "completed";
     const isUnscheduled = status === "unscheduled";
 
-    // Update task with the safe order value
-    await db.task.update({
-      where: { id },
-      data: {
-        completed: isCompleted,
-        status: isCompleted ? existingTask.status : status,
-        scheduled: !isUnscheduled,
-        date: isUnscheduled ? null : existingTask.date,
-        startTime: isUnscheduled ? null : existingTask.startTime,
-        endTime: isUnscheduled ? null : existingTask.endTime,
-        duration: isUnscheduled ? null : existingTask.duration,
-        order: safeOrder,
-      },
+    // Start a transaction to ensure all updates are atomic
+    await db.$transaction(async (prisma) => {
+      // 1. Fetch tasks in the destination column, ordered correctly
+      const destTasks = await prisma.task.findMany({
+        where: {
+          // Filter by user AND the destination status
+          userId: session.user.id, // Assuming tasks belong to a user
+          status: status,
+          completed: isCompleted, // Ensure completed status matches
+          scheduled: !isUnscheduled, // Ensure scheduled status matches
+          id: { not: id }, // Exclude the task being moved
+        },
+        orderBy: {
+          order: "asc", // Order by the existing order field
+        },
+        select: {
+          order: true, // Only select the order field
+        },
+      });
+
+      // 2. Calculate the new order value
+      let newOrder: number;
+      const defaultOrderGap = 1000; // Gap between tasks, adjust as needed
+
+      if (destTasks.length === 0) {
+        // If destination column is empty
+        newOrder = defaultOrderGap;
+      } else if (destinationIndex === 0) {
+        // If moving to the beginning
+        const firstOrder = destTasks[0].order ?? defaultOrderGap;
+        newOrder = firstOrder / 2;
+      } else if (destinationIndex >= destTasks.length) {
+        // If moving to the end
+        const lastOrder = destTasks[destTasks.length - 1].order ?? 0;
+        newOrder = lastOrder + defaultOrderGap;
+      } else {
+        // If moving between two tasks
+        const prevOrder = destTasks[destinationIndex - 1].order ?? 0;
+        const nextOrder = destTasks[destinationIndex].order ?? defaultOrderGap; // Use gap if next doesn't exist somehow
+        newOrder = (prevOrder + nextOrder) / 2;
+      }
+
+      // Handle potential floating point precision issues or zero values if necessary
+      if (newOrder <= 0) {
+        // This might happen if dividing very small numbers. Re-adjust.
+        // A more robust solution might involve re-spacing orders periodically.
+        // For now, just place it slightly after the previous or at the start.
+        if (destinationIndex > 0) {
+          newOrder =
+            (destTasks[destinationIndex - 1].order ?? 0) + defaultOrderGap / 10;
+        } else {
+          newOrder = defaultOrderGap / 10;
+        }
+      }
+
+      // 3. Update the moved task with new status and calculated order
+      await prisma.task.update({
+        where: { id },
+        data: {
+          order: newOrder,
+          status: isCompleted ? existingTask.status : status, // Keep original status if completed, otherwise use new status
+          completed: isCompleted,
+          scheduled: !isUnscheduled,
+          // Reset date/time if moved to unscheduled
+          date: isUnscheduled ? null : existingTask.date,
+          startTime: isUnscheduled ? null : existingTask.startTime,
+          endTime: isUnscheduled ? null : existingTask.endTime,
+          duration: isUnscheduled ? null : existingTask.duration,
+        },
+      });
+
+      // Note: No need to manually increment/decrement orders of other tasks
+      // when using fractional/float ordering like this.
     });
 
     return res.status(200).json({
-      message: "Task status updated successfully",
+      message: "Task position updated successfully",
       success: true,
     });
   } catch (error) {
-    console.error("Error updating task status:", error);
+    console.error("Error updating task position:", error);
+
     return res.status(500).json({
-      message: "Error updating task status: " + error,
+      message: "Error updating task position: " + error,
       success: false,
     });
   }
@@ -1364,6 +1498,17 @@ export async function updateTaskTimes(
         scheduled: true, // Ensure the task is marked as scheduled
       },
     });
+
+    if (existingTask.teamId) {
+      await db.teamActivity.create({
+        data: {
+          teamId: existingTask.teamId,
+          action: "updated",
+          type: "task",
+          userId: session.user.id,
+        },
+      });
+    }
 
     return res.status(200).json({
       message: "Task times updated successfully",

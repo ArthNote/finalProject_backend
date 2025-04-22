@@ -43,6 +43,12 @@ model User {
   ownedProjects      Project[]
   projectMemberships ProjectMember[]
 
+  members     Member[]
+  invitations Invitation[]
+
+  teamResources  TeamResource[]
+  teamActivities TeamActivity[]
+
   @@unique([email])
   @@unique([username])
   @@map("user")
@@ -58,6 +64,8 @@ model Session {
   userAgent String?
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  activeOrganizationId String?
 
   @@unique([token])
   @@map("session")
@@ -138,7 +146,7 @@ model Task {
   duration    Int? // Duration in minutes
   tags        String[]
   status      String? // For kanban view
-  order       Int? // For kanban sorting
+  order       Float? // For kanban sorting
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
@@ -156,6 +164,9 @@ model Task {
 
   projectId String?
   project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  teamId String?
+  team   Team?   @relation(fields: [teamId], references: [id], onDelete: SetNull)
 
   @@map("task")
 }
@@ -291,4 +302,92 @@ model ProjectMember {
 
   @@unique([projectId, userId])
   @@map("project_member")
+}
+
+model Organization {
+  id          String       @id @unique @default(cuid())
+  name        String
+  slug        String?
+  logo        String?
+  createdAt   DateTime     @default(now())
+  metadata    String?
+  members     Member[]
+  invitations Invitation[]
+  teams       Team[]
+
+  @@unique([slug])
+  @@map("organization")
+}
+
+model Member {
+  id             String       @id @unique @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role           String
+  teamId         String?
+  createdAt      DateTime     @default(now())
+
+  @@map("member")
+}
+
+model Invitation {
+  id             String       @id @unique @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  email          String
+  role           String?
+  teamId         String?
+  status         String
+  expiresAt      DateTime
+  inviterId      String
+  user           User         @relation(fields: [inviterId], references: [id], onDelete: Cascade)
+
+  @@map("invitation")
+}
+
+model Team {
+  id             String       @id @unique @default(cuid())
+  name           String
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime?    @updatedAt
+
+  tasks     Task[]
+  resources TeamResource[]
+  activity  TeamActivity[]
+
+  @@map("team")
+}
+
+model TeamResource {
+  id          String   @id @unique @default(cuid())
+  name        String
+  type        String // "file", "link", "document"
+  url         String?
+  size        Float? // Size in MB
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String
+  teamId      String
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  team        Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@map("team_resource")
+}
+
+model TeamActivity {
+  id        String   @id @unique @default(cuid())
+  type      String // "task", "member", "resource"
+  action    String // "created", "updated", "deleted", "completed"
+  details   Json? // Additional activity details
+  createdAt DateTime @default(now())
+  userId    String
+  teamId    String
+  user      User     @relation(fields: [userId], references: [id])
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@map("team_activity")
 }

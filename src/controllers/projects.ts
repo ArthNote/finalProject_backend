@@ -35,6 +35,8 @@ export const getProjects = async (req: Request, res: Response) => {
     const where: any = {
       AND: [
         // Search by name or description
+
+        { ownerId: session.user?.id },
         search
           ? {
               OR: [
@@ -45,8 +47,6 @@ export const getProjects = async (req: Request, res: Response) => {
           : {},
         // Filter by status
         status ? { status } : {},
-        // Filter by owner
-        ownerId ? { ownerId } : {},
         // Filter by member
         memberId
           ? {
@@ -122,7 +122,7 @@ export const getProject = async (req: Request, res: Response) => {
     const { id } = req.params;
 
     const project = await db.project.findUnique({
-      where: { id },
+      where: { id: id, ownerId: session.user?.id },
       include: {
         owner: {
           select: {

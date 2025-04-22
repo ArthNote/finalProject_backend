@@ -1,7 +1,13 @@
 import { betterAuth, parseCookies } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { db } from "./prisma";
-import { admin, twoFactor, username } from "better-auth/plugins";
+import {
+  admin,
+  createAuthMiddleware,
+  organization,
+  twoFactor,
+  username,
+} from "better-auth/plugins";
 import { sendEmail } from "./resend";
 import cookie from "cookie";
 
@@ -162,6 +168,22 @@ export const auth = betterAuth({
       updateAge: 24 * 60 * 60,
     },
   },
+
+  // hooks: {
+  //   after: createAuthMiddleware(async (ctx) => {
+  //     if (ctx.path === "/sign-up/email") {
+  //       return {
+  //         context: {
+  //           ...ctx,
+  //           body: {
+  //             ...ctx.body,
+  //             name: "John Doe",
+  //           },
+  //         },
+  //       };
+  //     }
+  //   }),
+  // },
   plugins: [
     username(),
     twoFactor(),
@@ -171,12 +193,31 @@ export const auth = betterAuth({
       createCustomerOnSignUp: true,
       subscription: {
         enabled: true,
-        onSubscriptionComplete: async ({
-          event,
-          subscription,
-          stripeSubscription,
-          plan,
-        }) => {
+        organization: {
+          enabled: true,
+        },
+        async authorizeReference(
+          { action, referenceId, session, user },
+          request
+        ) {
+          if (
+            action === "upgrade-subscription" ||
+            action === "cancel-subscription"
+          ) {
+            const org = await db.member.findFirst({
+              where: {
+                organizationId: referenceId,
+                userId: user.id,
+              },
+            });
+            return org?.role === "owner";
+          }
+          return true;
+        },
+        onSubscriptionComplete: async (
+          { event, subscription, stripeSubscription, plan },
+          req
+        ) => {
           console.log("Subscription completed");
 
           const price = stripeSubscription.items.data[0].plan.amount! / 100;
@@ -188,12 +229,14 @@ export const auth = betterAuth({
           });
 
           const paymentMethodId = paymentMethods.data[0].id;
-
           await stripeClient.customers.update(subscription.stripeCustomerId!, {
             invoice_settings: {
               default_payment_method: paymentMethodId,
             },
           });
+
+          const prodId = stripeSubscription.items.data[0].price.product;
+          const prod = await stripeClient.products.retrieve(prodId as string);
 
           const data = await db.subscription.update({
             where: {
@@ -202,8 +245,69 @@ export const auth = betterAuth({
             data: {
               billing: billing,
               price: price,
+              plan: plan.name.toLowerCase(),
             },
           });
+
+          const user = await db.user.findFirst({
+            where: {
+              stripeCustomerId: subscription.stripeCustomerId,
+            },
+          });
+
+          if (prod.name.toLowerCase() === "team") {
+            const org = await auth.api.createOrganization({
+              headers: req?.headers,
+              body: {
+                name: `${user?.name}'s Org`,
+                slug: `${user?.name}-org`.toLowerCase(),
+                userId: user?.id,
+                metadata: {
+                  subscriptionId: subscription.id,
+                  plan: "team",
+                },
+              },
+            });
+            const session = await auth.api.getSession({
+              headers: req?.headers!,
+            });
+            await db.session.update({
+              where: {
+                id: session?.session.id,
+              },
+              data: {
+                activeOrganizationId: org?.id,
+              },
+            });
+
+            await db.subscription.update({
+              where: { id: subscription.id },
+              data: {
+                referenceId: org?.id,
+                seats: 10,
+              },
+            });
+          } else {
+            const org = await auth.api.createOrganization({
+              headers: req?.headers,
+              body: {
+                name: `${user?.name}'s Org`,
+                slug: `${user?.name}-org`.toLowerCase(),
+                userId: user?.id,
+              },
+            });
+            const session = await auth.api.getSession({
+              headers: req?.headers!,
+            });
+            await db.session.update({
+              where: {
+                id: session?.session.id,
+              },
+              data: {
+                activeOrganizationId: org?.id,
+              },
+            });
+          }
 
           console.log("updated ", data);
         },
@@ -429,6 +533,112 @@ export const auth = betterAuth({
               success_url: `${frontEndUrl}/${data.user.lang}/dashboard`,
             },
           };
+        },
+      },
+    }),
+    organization({
+      teams: {
+        enabled: true,
+        maximumTeams: 1,
+        allowRemovingAllTeams: false,
+      },
+      sendInvitationEmail: async (data) => {
+        const userData = await db.user.findUnique({
+          where: {
+            email: data.email,
+          },
+        });
+
+        const inviteLink = `${frontEndUrl}/${userData?.lang}/team/invite/${data.id}`;
+
+        await sendEmail({
+          email: data.email,
+          subject:
+            userData?.lang === "en"
+              ? `Join ${data.organization.name} on Taskflow`
+              : `Rejoindre ${data.organization.name} sur Taskflow`,
+          html:
+            userData?.lang === "en"
+              ? `
+            <h2>You've been invited to join ${data.organization.name}</h2>
+            <p>${data.inviter.user.name} (${data.inviter.user.email}) has invited you to join their team on Taskflow.</p>
+            <p><a href="${inviteLink}">Click here to accept the invitation</a></p>
+          `
+              : `
+            <h2>Vous avez été invité à rejoindre ${data.organization.name}</h2>
+            <p>${data.inviter.user.name} (${data.inviter.user.email}) vous a invité à rejoindre leur équipe sur Taskflow.</p>
+            <p><a href="${inviteLink}">Cliquez ici pour accepter l'invitation</a></p>
+          `,
+        });
+      },
+      organizationCreation: {
+        beforeCreate: async ({ organization, user }) => {
+          const userData = await db.user.findUnique({
+            where: {
+              id: user.id,
+            },
+          });
+
+          if (!userData) {
+            throw new Error("User not found");
+          }
+          // Verify team subscription is active
+          const subscription = await db.subscription.findFirst({
+            where: {
+              stripeCustomerId: userData?.stripeCustomerId,
+              plan: "team",
+              status: {
+                in: ["active", "trialing"],
+              },
+            },
+          });
+
+          if (!subscription) {
+            throw new Error("Active team subscription required");
+          }
+
+          return {
+            data: {
+              ...organization,
+              metadata: {
+                ...organization.metadata,
+                subscriptionId: subscription.id,
+              },
+            },
+          };
+        },
+        async afterCreate(data, request) {
+          await db.team.create({
+            data: {
+              name: "General",
+              organizationId: data.organization.id,
+              activity: {
+                create: {
+                  type: "team",
+                  action: "created",
+                  userId: data.user.id,
+                },
+              },
+            },
+          });
+          // await auth.api
+          //   .createTeam({
+          //     headers: request?.headers,
+          //     body: {
+          //       name: "General",
+          //       organizationId: data.organization.id,
+          //     },
+          //   })
+          //   .then(async (res) => {
+          //     await db.teamActivity.create({
+          //       data: {
+          //         type: "team",
+          //         action: "created",
+          //         userId: data.user.id,
+          //         teamId: res.id,
+          //       },
+          //     });
+          //   });
         },
       },
     }),
