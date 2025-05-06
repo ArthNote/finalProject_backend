@@ -11,7 +11,7 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-app.options("*", cors());
+
 
 app.use(
   cors({
@@ -32,6 +32,8 @@ app.use(
     ],
   })
 );
+
+app.options("*", cors());
 
 app.all("/api/auth/*", toNodeHandler(auth));
 
